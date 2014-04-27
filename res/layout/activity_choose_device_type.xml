@@ -1,0 +1,52 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingTop="120dp"
+    tools:context="edu.usc.officeshare.HostActivity"
+    tools:ignore="MergeRootFrame" >
+
+	<TextView
+	    android:id="@+id/greeting"
+	    android:layout_width="wrap_content"
+	    android:layout_height="wrap_content"
+	    android:layout_gravity="center_horizontal"
+	    android:text="@string/greeting_msg"
+	    android:textAppearance="?android:attr/textAppearanceLarge"
+	    android:layout_marginBottom="36dp" />
+    
+    <!--LinearLayout 
+        android:layout_width="match_parent"
+        android:layout_height="96dp"
+        android:orientation="horizontal" 
+        android:paddingLeft="24dp"
+        android:paddingRight="24dp"-->
+        
+        <RelativeLayout 
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingLeft="36dp"
+            android:paddingRight="36dp">
+        <Button
+            android:id="@+id/host_btn"
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
+            android:text="@string/start_host"
+            android:layout_alignParentLeft="true"
+            android:onClick="onChooseHost" />
+
+        <Button
+            android:id="@+id/join_btn"
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
+            android:text="@string/start_join"
+            android:layout_alignParentRight="true"
+            android:onClick="onChooseJoin" />
+        </RelativeLayout>
+    <!--/LinearLayout-->
+        
+
+</LinearLayout>
+
