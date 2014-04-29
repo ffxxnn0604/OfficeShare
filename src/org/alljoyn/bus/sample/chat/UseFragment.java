@@ -1,10 +1,6 @@
 package org.alljoyn.bus.sample.chat;
 
-import java.io.File;
 import java.util.List;
-
-import edu.usc.officeshare.util.FileUtility;
-import edu.usc.officeshare.util.Utility;
 
 import android.app.Activity;
 import android.content.Intent;
@@ -26,12 +22,18 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.TextView;
+import edu.usc.officeshare.client.ClientFileTransfer;
+import edu.usc.officeshare.server.FileServer;
+import edu.usc.officeshare.util.OfficeShareConstants;
+import edu.usc.officeshare.util.Utility;
 
 public class UseFragment extends Fragment implements Observer{
 
     private static final String TAG = "chat.UseFragment";
     
     private ChatApplication mChatApplication = null;
+    private Thread mFileServerThread = null;
+    private Thread mFileClientThread = null;
     
     private ArrayAdapter<String> mHistoryList;
     
@@ -52,8 +54,7 @@ public class UseFragment extends Fragment implements Observer{
 	    
     @Override
 	public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-		// TODO Auto-generated method stub
-	    Log.i(TAG, "onCreateView()");
+		Log.i(TAG, "onCreateView()");
 		super.onCreateView(inflater, container, savedInstanceState);
 		
 		View mUseView = inflater.inflate(R.layout.fragment_use, container, false);
@@ -98,25 +99,23 @@ public class UseFragment extends Fragment implements Observer{
             }
         });
         
-//        mBroadcastUDTButton = (Button)mUseView.findViewById(R.id.broadcastUDT);
-//        mBroadcastUDTButton.setOnClickListener(new View.OnClickListener() {
-//			
-//			@Override
-//			public void onClick(View v) {
-//				// TODO Auto-generated method stub
-//				Log.i(TAG, "BroadcastUDT button pressed");
-//				mChatApplication.sendBroadcastUDT();
-//			}
-//		});
         
         mShareFile = (Button)mUseView.findViewById(R.id.shareFile);
         mShareFile.setOnClickListener(new View.OnClickListener() {
 			
 			@Override
 			public void onClick(View v) {
-				// TODO Auto-generated method stub
 				/*Log.i(TAG, "Share File button pressed");*/
 				performOpenFile();//right now doesn't accept parameter, should be able to select file types
+			}
+		});
+        
+        mRequestFile = (Button)mUseView.findViewById(R.id.requestFile);
+        mRequestFile.setOnClickListener(new View.OnClickListener() {
+			
+			@Override
+			public void onClick(View v) {
+				getFileFromHost();				
 			}
 		});
         
@@ -153,17 +152,11 @@ public class UseFragment extends Fragment implements Observer{
         return mUseView;
 	}
     
-//    @Override
-//    public void onPause() {
-//    	// TODO Auto-generated method stub
-//    	Log.w(TAG, "onPause() called");
-//    	super.onPause();
-//    }
     
     /**
 	 * Fires an intent to spin up the "file chooser" UI and select an image.
 	 */
-	public void performOpenFile() {
+	private void performOpenFile() {
 
 	    // ACTION_OPEN_DOCUMENT is the intent to choose a file via the system's file
 	    // browser.
@@ -233,30 +226,35 @@ public class UseFragment extends Fragment implements Observer{
 	            uri = data.getData();
 	            Log.i(TAG, "Uri: " + uri.toString());
 	            mFileURI.setText(uri.toString());
-	        }
+	            
+	            mChatApplication.setFileUri(uri);
+	            
+	            //We need to make sure before we inform other participants, we already has FileServerThread up and running
+	            //check mFileServerThread, if null, we need to start the UDT file server thread
+				if (mFileServerThread == null)
+				{
+					mFileServerThread = new Thread(new FileServer(OfficeShareConstants.DEFAULT_LISTEN_PORT, mChatApplication));
+					mFileServerThread.start();
+				}
+				//TODO if mFileServerThread is not null, need to update the thread to open a different FILE
+				else
+				{
+					
+				}            
+		        
+		        getFileMetaData(uri);
+	        }       
 	        
-	        getFileMetaData(uri);
 	        
-	        File mFile = FileUtility.getFile(getActivity(), uri);
+	        /*File mFile = FileUtility.getFile(mChatApplication, uri);
 	        long mSize = mFile.length();
-	        Log.w(TAG, "The file size is " + mSize);
-	        
-	        /*String mPath = FileUtility.getPath(getActivity().getApplicationContext(), uri);
-	        Log.w(TAG, "The path is " + mPath);
-	        
-	        File testFile = FileUtility.getFile(getActivity(), uri);
-	        if (testFile == null){
-	        	Log.w(TAG, "Unable to get file handle on the uri!");
-	        }
-	        else{
-	        	Log.w(TAG, "Get the handle on uri correctly!");
-	        }*/
+	        Log.w(TAG, "The file size is " + mSize);*/
 	        
 		}
 		
 	}
 	
-	public void getFileMetaData(Uri uri) {
+	private void getFileMetaData(Uri uri) {
 
 	    // The query, since it only applies to a single document, will only return
 	    // one row. There's no need to filter, sort, or select fields, since we want
@@ -270,8 +268,7 @@ public class UseFragment extends Fragment implements Observer{
 
 	            // Note it's called "Display Name".  This is
 	            // provider-specific, and might not necessarily be the file name.
-	            String displayName = cursor.getString(
-	                    cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME));
+	            String displayName = cursor.getString(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME));
 	            Log.i(TAG, "Display Name: " + displayName);
 	            mFileName.setText(displayName);
 
@@ -299,9 +296,8 @@ public class UseFragment extends Fragment implements Observer{
 	            // TODO need to test file size is not null, also need to add uri to fileinfo
 	            // TODO the default port number needs to be updated
 	            String mIP = Utility.getIPAddress(true);
-	            FileInfo mFileInfoNew = new FileInfo(mIP, 9000, displayName, mSize);
-	            if (mFileInfoNew == null) Log.w(TAG, "the new mFileInfoNew is null!");
-	            
+	            FileInfo mFileInfoNew = new FileInfo(mIP, OfficeShareConstants.DEFAULT_LISTEN_PORT, displayName, mSize);
+	             
 	            if (!mChatApplication.isSameFile(mFileInfoNew))
 	            {
 	            	mChatApplication.setFileInfo(mFileInfoNew);
@@ -314,6 +310,25 @@ public class UseFragment extends Fragment implements Observer{
 	    } finally {
 	        cursor.close();
 	    }
+	}
+	
+	private void getFileFromHost()
+	{
+		//TODO start a clientFileTransfer thread to get the file from the host
+		FileInfo mFileInfo = mChatApplication.getFileInfo();
+		if (mFileInfo == null)
+		{
+			Log.w(TAG, "mFileInfo is null!");
+			return;
+		}
+		Log.w(TAG, "FileServerIP is " + mFileInfo.fileServerIP + "FileServerPort is "+mFileInfo.fileServerPort);
+		
+		
+		
+		mFileClientThread = new Thread(new ClientFileTransfer(mFileInfo.fileServerIP, mFileInfo.fileServerPort, mChatApplication));
+		mFileClientThread.start();
+						
+		      
 	}
     
 	public void onDestroy() {
@@ -406,12 +421,23 @@ public class UseFragment extends Fragment implements Observer{
             mChannelStatus.setText("Idle");
             mJoinButton.setEnabled(true);
             mLeaveButton.setEnabled(false);
+            mShareFile.setEnabled(false);
+            mRequestFile.setEnabled(false);
             break;
-        case JOINED:
-            mChannelStatus.setText("Joined");
+        case JOINEDSELF:
+            mChannelStatus.setText("JoinedSelf");
             mJoinButton.setEnabled(false);
             mLeaveButton.setEnabled(true);
-            break;	
+            mShareFile.setEnabled(true);
+            mRequestFile.setEnabled(false);
+            break;
+        case JOINEDOTHER:
+            mChannelStatus.setText("JoinedOther");
+            mJoinButton.setEnabled(false);
+            mLeaveButton.setEnabled(true);
+            mShareFile.setEnabled(false);
+            mRequestFile.setEnabled(true);
+            break;
         }
     }
     

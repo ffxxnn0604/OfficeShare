@@ -6,20 +6,21 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.util.Log;
 import edu.usc.officeshare.server.FileServer;
+import edu.usc.officeshare.util.OfficeShareConstants;
 
 public class HostActivity extends Activity {
 
 	private static final String TAG = "HostActivity";
-	private static final int MAX_CLIENT = 10;
-	private static final int DEFAULT_LISTEN_PORT = 9000;
-
+	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_host);
 
 		//Start the FileServer listening thread
-		new Thread(new FileServer(DEFAULT_LISTEN_PORT, MAX_CLIENT)).start();
+		Thread mFileServerThread = new Thread(new FileServer(OfficeShareConstants.DEFAULT_LISTEN_PORT));
+		mFileServerThread.start();
+		
 		Log.d(TAG, "Server acceptor thread started");
 		
 	}

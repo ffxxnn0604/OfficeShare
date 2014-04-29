@@ -4,24 +4,29 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.alljoyn.bus.sample.chat.ChatApplication;
+
 import android.util.Log;
 
 import com.barchart.udt.ExceptionUDT;
 import com.barchart.udt.SocketUDT;
 import com.barchart.udt.TypeUDT;
 
+import edu.usc.officeshare.util.OfficeShareConstants;
+
 public class FileServer implements Runnable{
 
 	private final int port;
 	private final ExecutorService pool;
-	private final int MAX_CLIENT;
+	//private final int MAX_CLIENT;
+	private ChatApplication mApplication;
 	
 	private final static String TAG = "FileServer";
 	
-	public FileServer(int port, int max_client){
+	public FileServer(int port, ChatApplication mChatApplication){
 		this.port = port;
-		this.MAX_CLIENT = max_client;
-		pool = Executors.newFixedThreadPool(MAX_CLIENT);
+		pool = Executors.newFixedThreadPool(OfficeShareConstants.MAX_CLIENT);
+		mApplication = mChatApplication;
 	}	
 	
 	@Override
@@ -31,7 +36,7 @@ public class FileServer implements Runnable{
 			final SocketUDT acceptorSocket = new SocketUDT(TypeUDT.STREAM);
 			
 			acceptorSocket.bind(new InetSocketAddress("0.0.0.0", port));
-			acceptorSocket.listen(MAX_CLIENT);
+			acceptorSocket.listen(OfficeShareConstants.MAX_CLIENT);
 			
 			Log.d(TAG, "FileServer is ready at port: " + port);
 			
@@ -42,7 +47,7 @@ public class FileServer implements Runnable{
 				Log.d(TAG,"New client connected");
 				
 				//when new client need the file, a new ServerFileTransfer thread is submitted to the pool
-				pool.execute(new ServerFileTransfer(clientSocket));
+				pool.execute(new ServerFileTransfer(clientSocket, mApplication));
 				
 				/*new Thread(new ServerFileTransfer(clientSocket)).start();
 				

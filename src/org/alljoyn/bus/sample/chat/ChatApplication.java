@@ -26,6 +26,7 @@ import java.util.List;
 import android.app.Application;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.net.Uri;
 import android.util.Log;
 
 /**
@@ -474,7 +475,8 @@ public class ChatApplication extends Application implements Observable {
 	 */
 	public synchronized void newLocalUserMessage(String message) {
 		addInboundItem("Me", message);
-		if (useGetChannelState() == AllJoynService.UseChannelState.JOINED) {
+		if (useGetChannelState() == AllJoynService.UseChannelState.JOINEDSELF
+			|| useGetChannelState() == AllJoynService.UseChannelState.JOINEDOTHER) {
 			addOutboundItem(message);
 		}
 	}
@@ -714,6 +716,20 @@ public class ChatApplication extends Application implements Observable {
 	
 	public synchronized void sendBroadcastUDT(){
 		notifyObservers(BROADCAST_UDT_EVENT);
+	}
+	
+	private Uri uri = null;
+	
+	public synchronized void setFileUri(Uri newUri)
+	{
+		Log.i(TAG, "The new uri is :" + newUri.toString());
+		uri = newUri;
+	}
+	
+	public synchronized Uri getFileUri()
+	{
+		Log.i(TAG, "Returning URI: " + uri.toString());
+		return uri;
 	}
 		
 }

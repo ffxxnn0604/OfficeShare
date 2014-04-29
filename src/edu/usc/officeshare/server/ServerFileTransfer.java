@@ -2,12 +2,16 @@ package edu.usc.officeshare.server;
 
 import java.io.File;
 
+import org.alljoyn.bus.sample.chat.ChatApplication;
+
+import android.net.Uri;
 import android.os.Environment;
 import android.util.Log;
 
 import com.barchart.udt.ExceptionUDT;
 import com.barchart.udt.SocketUDT;
 
+import edu.usc.officeshare.util.FileUtility;
 import edu.usc.officeshare.util.Utility;
 
 public class ServerFileTransfer implements Runnable {
@@ -16,77 +20,65 @@ public class ServerFileTransfer implements Runnable {
 	
 	private final SocketUDT clientSocket;
 	
-	private String filePathUnderSDRoot = "";
+	private ChatApplication mApplication;
 	
-	public ServerFileTransfer(SocketUDT newClientSocket){
+	public ServerFileTransfer(SocketUDT newClientSocket, ChatApplication mChatApplication){
 		clientSocket = newClientSocket;
-		filePathUnderSDRoot = "BigJava5.pdf"; //the path to a file should be passed through ctor
+		mApplication = mChatApplication;
+		//filePathUnderSDRoot = "BigJava5.pdf"; //the path to a file should be passed through ctor
 	}
 	
 	@Override
 	public void run() {
-		String filename;
-		int fileNameLength;
+		
 		byte[] buffer;
-		long requestFileSize;
 		
 		try{
+			
+			/**
+			 * There are some initial checks before start to send the file:
+			 * 1.check sd card is mounted, send -1 if not
+			 * 2.File get back by calling getFileUri() is not null, send -2 if not
+			 * 3.If everything is fine, send 0 as a ready signal
+			 */
+						
 			//1. check if SD card is mounted or not
 			if (!Environment.getExternalStorageState().equalsIgnoreCase(Environment.MEDIA_MOUNTED)){
-				buffer = new byte[8];
-				buffer = Utility.longToByte(-1); //send size as -1 if SD card is not mounted
+				buffer = new byte[4];
+				buffer = Utility.intToByte(-1); //send size as -1 if SD card is not mounted
 				clientSocket.send(buffer);
-				Log.d(TAG, "The SD card is not mounted, send -1 as the size, closing socket.");
+				Log.d(TAG, "The SD card is not mounted, send -1 as initial handshake signal");
 				clientSocket.close();
 				return;
 			}
 			
-			//2. if SD is present, concatenate the path to sd root and path to file
-			File dirToSDRoot = Environment.getExternalStorageDirectory();
-			File requestFile = new File(dirToSDRoot, filePathUnderSDRoot);
-			
-			//3. check if the file exist or not
-			if (!requestFile.exists()){
-				// if file doesn't exist, send 0 as the file size
-				// then close the socket, as this is a incorrect request
-				buffer = new byte[8];
-				buffer = Utility.longToByte(0);
+			//2. if SD is present, get the File handle from the URI
+			Uri fileUri = mApplication.getFileUri();
+			File requestFile = FileUtility.getFile(mApplication, fileUri);
+			//If error getting the File through Uri, send -2 as the 
+			if (requestFile == null)
+			{
+				buffer = new byte[4];
+				buffer = Utility.intToByte(-2);
 				clientSocket.send(buffer);
-				Log.d(TAG, "File doesn't exist, send 0 as the size, closing socket.");
+				Log.d(TAG, "File is null, send -2 as initial handshake signal");
 				clientSocket.close();
 				return;
 			}
 			
-			//4. file exist, let's extract the filename and its length
-			filename = requestFile.getName();
-			Log.d(TAG, "The filename is " + filename);
-			fileNameLength = filename.length();
-			Log.d(TAG, "The filename's length is " + fileNameLength);
-			
-			//5. send the length of filename
+			//3.Everything is fine, send 0 as the initial handshake signal
 			buffer = new byte[4];
-			buffer = Utility.intToByte(fileNameLength);
+			buffer = Utility.intToByte(0);
 			clientSocket.send(buffer);
-			Log.d(TAG, "sent length of filename "+ fileNameLength);
+			Log.d(TAG, "Check passed, send 0 as initial handshake signal");
 			
-			//6. send the filename
-			buffer = new byte[fileNameLength];
-			buffer = filename.getBytes();
-			clientSocket.send(buffer);
-			Log.d(TAG, "sent the filename " + filename);
+			//4. send the file
+			long mSize = requestFile.length();
+	        Log.w(TAG, "The file size is " + mSize);				
+			clientSocket.sendFile(requestFile, 0, mSize);
+			Log.d(TAG, "File sending.");
 			
-			//7. send the size of the file
-			requestFileSize = requestFile.length();
-			buffer = new byte[8];
-			buffer = Utility.longToByte(requestFileSize);
-			clientSocket.send(buffer);
-			Log.d(TAG, "Send the file size " + requestFileSize);
-			
-			//8. send the file
-			clientSocket.sendFile(requestFile, 0, requestFileSize);
-			Log.d(TAG, "File sent.");
-			
-			//9. finish sending file, close client socket (accept socket is open)
+			//5. finish sending file, close client socket (accept socket is still open)
 			clientSocket.close();
 			Log.d(TAG, "Socket closed.");			
 			
@@ -94,68 +86,6 @@ public class ServerFileTransfer implements Runnable {
 		catch (ExceptionUDT u){
 			u.printStackTrace();
 		}
-		
-/*		try {
-			
-			Log.d(TAG, "Inside a client handle thread.");
-			
-			//1. get length of file name
-			buffer = new byte[4];
-			clientSocket.receive(buffer);
-			fileNameLength = Utility.byteToInt(buffer);
-			Log.d(TAG, "The file length is " + fileNameLength);
-			
-			//2. get fileName
-			buffer = new byte[fileNameLength];
-			clientSocket.receive(buffer);
-			filename = new String(buffer);
-			Log.d(TAG, "The file name is " + filename + ", its length is " + filename.length());
-			
-			//3. check if the SD card is mounted or not
-			if (!Environment.getExternalStorageState().equalsIgnoreCase(Environment.MEDIA_MOUNTED)){
-				buffer = new byte[8];
-				buffer = Utility.longToByte(-1); //send size as -1 if SD card is not mounted
-				clientSocket.send(buffer);
-				Log.d(TAG, "The SD card is not mounted, send -1 as the size, closing socket.");
-				clientSocket.close();
-				return;
-			}
-			
-			//4. check if the file exist, and get handle on it
-			File dirToSDRoot = Environment.getExternalStorageDirectory();
-			File requestFile = new File(dirToSDRoot, filename);//"request.txt");
-			Log.d(TAG, "The file path is " + requestFile.getAbsolutePath());
-			if (!requestFile.exists()){
-				// if file doesn't exist, send 0 as the file size
-				// then close the socket, as this is a incorrect request
-				buffer = new byte[8];
-				buffer = Utility.longToByte(0);
-				clientSocket.send(buffer);
-				Log.d(TAG, "File doesn't exist, send 0 as the size, closing socket.");
-				clientSocket.close();
-				return;
-			}
-			
-			Log.d(TAG, "The file exist!");
-			
-			//5. send file size information
-			requestFileSize = requestFile.length();
-			buffer = new byte[8];
-			buffer = Utility.longToByte(requestFileSize);
-			clientSocket.send(buffer);
-			Log.d(TAG, "Send the file size " + requestFileSize);
-			
-			//6. send the file
-			clientSocket.sendFile(requestFile, 0, requestFileSize);
-			Log.d(TAG, "File sent.");
-			
-			//7. finish sending file, close client socket (accept socket is open)
-			clientSocket.close();
-			Log.d(TAG, "Socket closed.");					
-			
-		} catch (ExceptionUDT e) {
-			e.printStackTrace();
-		}*/
 		
 	}	
 	

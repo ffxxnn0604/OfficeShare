@@ -28,8 +28,6 @@ import org.alljoyn.bus.SignalEmitter;
 import org.alljoyn.bus.Status;
 import org.alljoyn.bus.annotation.BusSignalHandler;
 
-import edu.usc.officeshare.util.Utility;
-
 import android.app.PendingIntent;
 import android.app.Service;
 import android.app.TaskStackBuilder;
@@ -41,9 +39,14 @@ import android.os.Looper;
 import android.os.Message;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
+import edu.usc.officeshare.server.FileServer;
+import edu.usc.officeshare.util.OfficeShareConstants;
+import edu.usc.officeshare.util.Utility;
 
 public class AllJoynService extends Service implements Observer {
 	private static final String TAG = "chat.AllJoynService";
+	
+	
 
 	/**
 	 * We don't use the bindery to communicate between any client and this
@@ -401,7 +404,8 @@ public class AllJoynService extends Service implements Observer {
      */
     public static enum UseChannelState {
     	IDLE,	        /** There is no used chat channel */ 
-    	JOINED,		    /** The session for the channel has been successfully joined */
+    	JOINEDSELF,		/** The session for the channel has been successfully joined */
+    	JOINEDOTHER		/** Joined a session hosted somewhere else*/
     }
     
     /**
@@ -1120,7 +1124,7 @@ public class AllJoynService extends Service implements Observer {
          */
         if (mHostChannelState != HostChannelState.IDLE) {
         	if (mChatApplication.useGetChannelName().equals(mChatApplication.hostGetChannelName())) {              
-             	mUseChannelState = UseChannelState.JOINED;
+             	mUseChannelState = UseChannelState.JOINEDSELF;
               	mChatApplication.useSetChannelState(mUseChannelState);
         		mJoinedToSelf = true;
                 return;
@@ -1147,7 +1151,7 @@ public class AllJoynService extends Service implements Observer {
              * to chat with.
              *
              * In the class documentation for the BusListener note that it is a
-             * requirement for this method to be multithread safe.  This is
+             * requirement for this method to be multi-thread safe.  This is
              * accomplished by the use of a monitor on the ChatApplication as
              * exemplified by the synchronized attribute of the removeFoundChannel
              * method there.
@@ -1171,7 +1175,7 @@ public class AllJoynService extends Service implements Observer {
         SignalEmitter emitter = new SignalEmitter(mChatService, mUseSessionId, SignalEmitter.GlobalBroadcast.Off);
         mChatInterface = emitter.getInterface(ChatInterface.class);
         
-     	mUseChannelState = UseChannelState.JOINED;
+     	mUseChannelState = UseChannelState.JOINEDOTHER;
       	mChatApplication.useSetChannelState(mUseChannelState);
     }
     
@@ -1231,6 +1235,7 @@ public class AllJoynService extends Service implements Observer {
 			}
     	}
     }
+
     
     /**
      * The method related to broadcasting file server info
@@ -1246,7 +1251,14 @@ public class AllJoynService extends Service implements Observer {
     	
     	FileInfo mFileInfo = mChatApplication.getFileInfo();
     	
-    	if (mFileInfo == null) Log.w(TAG, "mFileInfo is null!");
+    	//The following should never happen, since the null check happened before this call,
+    	//and it was in UseFragment, when Uri is returned in onActivityResult()
+    	if (mFileInfo == null)
+		{
+			Log.w(TAG, "mFileInfo is null!");
+			mChatApplication.alljoynError(ChatApplication.Module.USE, "Unable to broadcast a null FileInfo!");
+	    	return;
+		}
 		
 		Log.i(TAG, "Constructed a file info: server: "+ mFileInfo.fileServerIP + " port: "+mFileInfo.fileServerPort + " filename: " + mFileInfo.fileName + " filesize: " + mFileInfo.fileSize);
     	
@@ -1257,7 +1269,11 @@ public class AllJoynService extends Service implements Observer {
 			 * the host only need to send signal to others to indicate the update of the file shared,
 			 * so emit the signal through the remote "mChatInterface"
 			 */
-			if (mHostChatInterface != null) mHostChatInterface.FileInfo(mFileInfo);			
+			if (mJoinedToSelf)
+			{
+				if (mHostChatInterface != null) mHostChatInterface.FileInfo(mFileInfo);
+				
+			}
 			
 			/*if (mJoinedToSelf){
 				if (mHostChatInterface != null){
