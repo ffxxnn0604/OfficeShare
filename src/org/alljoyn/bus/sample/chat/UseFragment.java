@@ -3,6 +3,8 @@ package org.alljoyn.bus.sample.chat;
 import java.util.List;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -22,6 +24,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
 import edu.usc.officeshare.client.ClientFileTransfer;
 import edu.usc.officeshare.server.FileServer;
 import edu.usc.officeshare.util.OfficeShareConstants;
@@ -84,6 +87,12 @@ public class UseFragment extends Fragment implements Observer{
                 
             	ChatDialogFragment mChatDialogFragment = ChatDialogFragment.newInstance(DialogType.UseJoin);
             	mChatDialogFragment.show(getFragmentManager(), "usejoin");
+            	
+            	/*CharSequence text = "Hello toast!";
+            	int duration = Toast.LENGTH_SHORT;
+
+            	Toast toast = Toast.makeText(getActivity(), text, duration);
+            	toast.show();*/
             	
             	//showDialog(DIALOG_JOIN_ID);
         	}
@@ -301,7 +310,7 @@ public class UseFragment extends Fragment implements Observer{
 	            if (!mChatApplication.isSameFile(mFileInfoNew))
 	            {
 	            	mChatApplication.setFileInfo(mFileInfoNew);
-	            	mChatApplication.sendBroadcastUDT();
+	            	mChatApplication.broadcastFileInfo();
 	            	Log.w(TAG, "sendBroadcastUDT called!");
 	            }
 	            
@@ -318,12 +327,17 @@ public class UseFragment extends Fragment implements Observer{
 		FileInfo mFileInfo = mChatApplication.getFileInfo();
 		if (mFileInfo == null)
 		{
-			Log.w(TAG, "mFileInfo is null!");
+			Log.w(TAG, "mFileInfo is null, request a manual update from the host, then display a dialog");
+			mChatApplication.updateFileInfo(); //request manual update, next time we should have a non-null mFileInfo
+			
+			ChatDialogFragment mChatDialogFragment = ChatDialogFragment.newInstance(DialogType.NoFileInfo);
+    		mChatDialogFragment.show(getFragmentManager(), "NoFileInfo");    	
+			
 			return;
 		}
+		
+		//if mFileInfo is not null, then we are OK to proceed and transfer the file from host
 		Log.w(TAG, "FileServerIP is " + mFileInfo.fileServerIP + "FileServerPort is "+mFileInfo.fileServerPort);
-		
-		
 		
 		mFileClientThread = new Thread(new ClientFileTransfer(mFileInfo.fileServerIP, mFileInfo.fileServerPort, mChatApplication));
 		mFileClientThread.start();

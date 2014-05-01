@@ -21,6 +21,7 @@ import org.alljoyn.bus.BusListener;
 import org.alljoyn.bus.BusObject;
 import org.alljoyn.bus.MessageContext;
 import org.alljoyn.bus.Mutable;
+import org.alljoyn.bus.ProxyBusObject;
 import org.alljoyn.bus.SessionListener;
 import org.alljoyn.bus.SessionOpts;
 import org.alljoyn.bus.SessionPortListener;
@@ -39,14 +40,10 @@ import android.os.Looper;
 import android.os.Message;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
-import edu.usc.officeshare.server.FileServer;
-import edu.usc.officeshare.util.OfficeShareConstants;
 import edu.usc.officeshare.util.Utility;
 
 public class AllJoynService extends Service implements Observer {
-	private static final String TAG = "chat.AllJoynService";
-	
-	
+	private static final String TAG = "chat.AllJoynService";	
 
 	/**
 	 * We don't use the bindery to communicate between any client and this
@@ -68,7 +65,7 @@ public class AllJoynService extends Service implements Observer {
 	@Override
 	public void onCreate() {
         Log.i(TAG, "onCreate()");
-        startBusThread();
+        startBusThread(); //start the mBackgroundHandler 
         mChatApplication = (ChatApplication)getApplication();
         mChatApplication.addObserver(this);
         
@@ -222,8 +219,13 @@ public class AllJoynService extends Service implements Observer {
             mHandler.sendMessage(message);
         }
         
-        else if (qualifier.equals(ChatApplication.BROADCAST_UDT_EVENT)) {
-        	Message message = mHandler.obtainMessage(HANDLE_BROADCAST_UDT_EVENT);
+        else if (qualifier.equals(ChatApplication.BROADCAST_FILEINFO_EVENT)) {
+        	Message message = mHandler.obtainMessage(HANDLE_BROADCAST_FILEINFO_EVENT);
+        	mHandler.sendMessage(message);
+        }
+        
+        else if (qualifier.equals(ChatApplication.UPDATE_FILEINFO_EVENT)) {
+        	Message message = mHandler.obtainMessage(HANDLE_UPDATE_FILEINFO_EVENT);
         	mHandler.sendMessage(message);
         }
         
@@ -300,10 +302,16 @@ public class AllJoynService extends Service implements Observer {
 		                mBackgroundHandler.sendMessages();
 		            }
 		            break;
-		        case HANDLE_BROADCAST_UDT_EVENT:
+		        case HANDLE_BROADCAST_FILEINFO_EVENT:
 			        {
-			        	Log.i(TAG, "mHandler.handlerMessage(): BROADCAST_UDT_EVENT");
-			        	mBackgroundHandler.broadcastUDT();
+			        	Log.i(TAG, "mHandler.handlerMessage(): BROADCAST_FILEINFO_EVENT");
+			        	mBackgroundHandler.broadcastFileInfo();
+			        }
+			        break;
+		        case HANDLE_UPDATE_FILEINFO_EVENT:
+			        {
+			        	Log.i(TAG, "mHandler.handlerMessage(): UPDATE_FILEINFO_EVENT");
+			        	mBackgroundHandler.updateFileInfo();
 			        }
 			        break;
 	            default:
@@ -347,7 +355,9 @@ public class AllJoynService extends Service implements Observer {
      */
     private static final int HANDLE_OUTBOUND_CHANGED_EVENT = 6;
     
-    private static final int HANDLE_BROADCAST_UDT_EVENT = 7;
+    private static final int HANDLE_BROADCAST_FILEINFO_EVENT = 7;
+    
+    private static final int HANDLE_UPDATE_FILEINFO_EVENT = 8;
     
     /**
      * Enumeration of the states of the AllJoyn bus attachment.  This
@@ -554,9 +564,15 @@ public class AllJoynService extends Service implements Observer {
         	mBackgroundHandler.sendMessage(msg);
         }
         
-        public void broadcastUDT(){
-        	Log.i(TAG, "mBackgroundHandler.sendBroadcastUDT()");
-        	Message msg = mBackgroundHandler.obtainMessage(BROADCAST_UDT);
+        public void broadcastFileInfo(){
+        	Log.i(TAG, "mBackgroundHandler.sendBroadcastFileInfo()");
+        	Message msg = mBackgroundHandler.obtainMessage(BROADCAST_FILEINFO);
+        	mBackgroundHandler.sendMessage(msg);
+        }
+        
+        public void updateFileInfo(){
+        	Log.i(TAG, "mBackgroundHandler.updateFileInfo()");
+        	Message msg = mBackgroundHandler.obtainMessage(UPDATE_FILEINFO);
         	mBackgroundHandler.sendMessage(msg);
         }
                  
@@ -608,8 +624,11 @@ public class AllJoynService extends Service implements Observer {
 	        case EXIT:
                 getLooper().quit();
                 break;
-	        case BROADCAST_UDT:
-	        	doBroadcastUDT();
+	        case BROADCAST_FILEINFO:
+	        	doBroadcastFileInfo();
+	        	break;
+	        case UPDATE_FILEINFO:
+	        	doUpdateFileInfo();
 	        	break;
 		    default:
 		    	break;
@@ -631,7 +650,8 @@ public class AllJoynService extends Service implements Observer {
     private static final int JOIN_SESSION = 12;
     private static final int LEAVE_SESSION = 13;
     private static final int SEND_MESSAGES = 14;
-    private static final int BROADCAST_UDT = 15;
+    private static final int BROADCAST_FILEINFO = 15;
+    private static final int UPDATE_FILEINFO = 16;
     
     /**
      * The instance of the AllJoyn background thread handler.  It is created
@@ -673,7 +693,9 @@ public class AllJoynService extends Service implements Observer {
      * the well-known name a hosting bus attachment will request and 
      * advertise.
      */
-    private static final String NAME_PREFIX = "org.alljoyn.bus.samples.chat";
+    private static final String NAME_PREFIX_SIGNAL= "org.alljoyn.bus.samples.chat";
+    
+    private static final String NAME_PREFIX_PROPERTY = "org.alljoyn.bus.FileInfo";
     
 	/**
 	 * The well-known session port used as the contact port for the chat service.
@@ -684,7 +706,9 @@ public class AllJoynService extends Service implements Observer {
      * The object path used to identify the service "location" in the bus
      * attachment.
      */
-    private static final String OBJECT_PATH = "/chatService";
+    private static final String SIGNAL_OBJECT_PATH = "/chatService";
+    
+    private static final String PROPERTY_OBJECT_PATH = "/fileInfoProperty";
     
     /**
      * The ChatBusListener is a class that listens to the AllJoyn bus for
@@ -710,8 +734,20 @@ public class AllJoynService extends Service implements Observer {
 		 */
 		public void foundAdvertisedName(String name, short transport, String namePrefix) {
             Log.i(TAG, "mBusListener.foundAdvertisedName(" + name + ")");
-			ChatApplication application = (ChatApplication)getApplication();
-			application.addFoundChannel(name);
+			
+            if(name.contains(NAME_PREFIX_SIGNAL)){
+            	ChatApplication application = (ChatApplication)getApplication();
+    			application.addFoundChannel(name);
+            }
+            else if(name.contains(NAME_PREFIX_PROPERTY)){
+            	// we will only be here if we're a client joining a remote host, and called findAdvertisedName() for the property interface before
+            	assert(mUseSessionId != -1);
+            	ProxyBusObject mProxyObj = mBus.getProxyBusObject(name, PROPERTY_OBJECT_PATH, mUseSessionId, new Class<?>[] {FileInfoInterface.class});
+                mFileInfoPropertyInterface = mProxyObj.getInterface(FileInfoInterface.class);
+                assert(mFileInfoPropertyInterface != null);
+                Log.w(TAG, "mFileInfoPropertyInterface is no longer null!");
+            }           
+            
 		}
 		
    		/**
@@ -729,8 +765,15 @@ public class AllJoynService extends Service implements Observer {
 		 */
 		public void lostAdvertisedName(String name, short transport, String namePrefix) {
             Log.i(TAG, "mBusListener.lostAdvertisedName(" + name + ")");
-			ChatApplication application = (ChatApplication)getApplication();
-			application.removeFoundChannel(name);
+            
+            if(name.contains(NAME_PREFIX_SIGNAL)) {
+            	ChatApplication application = (ChatApplication)getApplication();
+    			application.removeFoundChannel(name);
+            }
+            else if(name.contains(NAME_PREFIX_PROPERTY)) {
+            	//TODO if the PROPERTY_INTERFACE is lost, then the host left the session, there might be something we need to do
+            	mFileInfoPropertyInterface = null;
+            }			
 		}
     }
     
@@ -742,6 +785,37 @@ public class AllJoynService extends Service implements Observer {
      * explicitly declared class in this case.
      */
     private ChatBusListener mBusListener = new ChatBusListener();
+    
+    /**
+     * The session identifier of the "host" session that the application
+     * provides for remote devices.  Set to -1 if not connected.
+     */
+    int mHostSessionId = -1;
+    
+    /**
+     * A flag indicating that the application has joined a chat channel that
+     * it is hosting.  See the long comment in doJoinSession() for a
+     * description of this rather non-intuitively complicated case.
+     */
+    boolean mJoinedToSelf = false;
+    
+    /**
+     * This is the interface over which the chat messages will be sent in
+     * the case where the application is joined to a chat channel hosted
+     * by itself.  See the long comment in doJoinSession() for a
+     * description of this rather non-intuitively complicated case.
+     */
+    ChatInterface mHostChatInterface = null;
+    
+    /**
+     * This is the interface over which the chat messages will be sent.
+     */
+    ChatInterface mChatInterface = null;
+    
+    /**
+     * This is the interface over which FileInfo is retrieved
+     */
+    FileInfoInterface mFileInfoPropertyInterface = null;
     
     /**
      * Implementation of the functionality related to connecting our app
@@ -763,11 +837,11 @@ public class AllJoynService extends Service implements Observer {
          * object path.  Our service is implemented by the ChatService
          * BusObject found at the "/chatService" object path.
          */
-        Status status = mBus.registerBusObject(mChatService, OBJECT_PATH);
+        Status status = mBus.registerBusObject(mChatService, SIGNAL_OBJECT_PATH);
         if (Status.OK != status) {
     		mChatApplication.alljoynError(ChatApplication.Module.HOST, "Unable to register the chat bus object: (" + status + ")");
         	return;
-        }
+        }              
     	
     	status = mBus.connect();
     	if (status != Status.OK) {
@@ -783,6 +857,18 @@ public class AllJoynService extends Service implements Observer {
         
     	mBusAttachmentState = BusAttachmentState.CONNECTED;
     }  
+    
+    private void doRegisterProperty() {
+    	Log.i(TAG, "doRegisterProperty()");
+    	
+    	assert(mBusAttachmentState == BusAttachmentState.DISCONNECTED);
+    	Status status = mBus.registerBusObject(mFileInfoProperty, PROPERTY_OBJECT_PATH);
+        if (Status.OK != status) {
+    		mChatApplication.alljoynError(ChatApplication.Module.HOST, "Unable to register the FileInfo bus object: (" + status + ")");
+        	return;
+        }     
+        
+    }
     
     /**
      * Implementation of the functionality related to disconnecting our app
@@ -804,13 +890,13 @@ public class AllJoynService extends Service implements Observer {
      * Implementation of the functionality related to discovering remote apps
      * which are hosting chat channels.  We expect that this method will only
      * be called in the context of the AllJoyn bus handler thread; and while
-     * we are in the CONNECTED state.  Since this is a core bit of functionalty
+     * we are in the CONNECTED state.  Since this is a core bit of functionality
      * for the "use" side of the app, we always do this at startup.
      */
     private void doStartDiscovery() {
         Log.i(TAG, "doStartDiscovery()");
     	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
-      	Status status = mBus.findAdvertisedName(NAME_PREFIX);
+      	Status status = mBus.findAdvertisedName(NAME_PREFIX_SIGNAL);
     	if (status == Status.OK) {
         	mBusAttachmentState = BusAttachmentState.DISCOVERING;
         	return;
@@ -827,7 +913,8 @@ public class AllJoynService extends Service implements Observer {
     private void doStopDiscovery() {
         Log.i(TAG, "doStopDiscovery()");
     	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
-      	mBus.cancelFindAdvertisedName(NAME_PREFIX);
+      	mBus.cancelFindAdvertisedName(NAME_PREFIX_SIGNAL);
+      	
       	mBusAttachmentState = BusAttachmentState.CONNECTED;
     }
        
@@ -849,7 +936,7 @@ public class AllJoynService extends Service implements Observer {
     	 * We depend on the user interface and model to work together to not
     	 * get this process started until a valid name is set in the channel name.
     	 */
-    	String wellKnownName = NAME_PREFIX + "." + mChatApplication.hostGetChannelName();
+    	String wellKnownName = NAME_PREFIX_SIGNAL + "." + mChatApplication.hostGetChannelName();
         Status status = mBus.requestName(wellKnownName, BusAttachment.ALLJOYN_REQUESTNAME_FLAG_DO_NOT_QUEUE);
         if (status == Status.OK) {
           	mHostChannelState = HostChannelState.NAMED;
@@ -857,6 +944,33 @@ public class AllJoynService extends Service implements Observer {
         } else {
     		mChatApplication.alljoynError(ChatApplication.Module.USE, "Unable to acquire well-known name: (" + status + ")");
         }
+    }
+    
+    private void doRequestNameAndAdvertiseProperty() {
+    	Log.i(TAG, "doRequestNameProperty()");
+    	
+    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
+    	
+    	int flag = BusAttachment.ALLJOYN_REQUESTNAME_FLAG_REPLACE_EXISTING | BusAttachment.ALLJOYN_REQUESTNAME_FLAG_DO_NOT_QUEUE;
+        String wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.hostGetChannelName();
+    	Status status = mBus.requestName(wellKnownName, flag);
+        if (status == Status.OK) {
+        	/*
+        	 * If we successfully obtain a well-known name from the bus 
+        	 * advertise the same well-known name
+        	 */
+        	status = mBus.advertiseName(wellKnownName, SessionOpts.TRANSPORT_ANY);
+            if (status != Status.OK) {
+            	 /*
+                 * If we are unable to advertise the name, release
+                 * the name from the local bus.
+                 */
+                status = mBus.releaseName(wellKnownName);
+                mChatApplication.alljoynError(ChatApplication.Module.HOST, "Unable to advertise the FileInfo bus object: (" + status + ")");
+            	return;
+            }
+        } 
+    	
     }
     
     /**
@@ -884,7 +998,7 @@ public class AllJoynService extends Service implements Observer {
     	 * We depend on the user interface and model to work together to not
     	 * change the name out from under us while we are running.
     	 */
-    	String wellKnownName = NAME_PREFIX + "." + mChatApplication.hostGetChannelName();
+    	String wellKnownName = NAME_PREFIX_SIGNAL + "." + mChatApplication.hostGetChannelName();
 
     	/*
     	 * There's not a lot we can do if the bus attachment refuses to release
@@ -892,6 +1006,12 @@ public class AllJoynService extends Service implements Observer {
     	 * because bus attachments can have multiple names.
     	 */
     	mBus.releaseName(wellKnownName);
+    	
+    	//if we are the host leaving the channel, also release the property name from the bus
+    	if(mJoinedToSelf){
+    		wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.hostGetChannelName();
+    		mBus.releaseName(wellKnownName);
+    	}
     	mHostChannelState = HostChannelState.IDLE;
       	mChatApplication.hostSetChannelState(mHostChannelState);
     }
@@ -976,31 +1096,7 @@ public class AllJoynService extends Service implements Observer {
       	mChatApplication.hostSetChannelState(mHostChannelState);
     }
     
-    /**
-     * The session identifier of the "host" session that the application
-     * provides for remote devices.  Set to -1 if not connected.
-     */
-    int mHostSessionId = -1;
     
-    /**
-     * A flag indicating that the application has joined a chat channel that
-     * it is hosting.  See the long comment in doJoinSession() for a
-     * description of this rather non-intuitively complicated case.
-     */
-    boolean mJoinedToSelf = false;
-    
-    /**
-     * This is the interface over which the chat messages will be sent in
-     * the case where the application is joined to a chat channel hosted
-     * by itself.  See the long comment in doJoinSession() for a
-     * description of this rather non-intuitively complicated case.
-     */
-    ChatInterface mHostChatInterface = null;
-    
-    /**
-     * This is the interface over which the chat messages will be sent.
-     */
-    ChatInterface mChatInterface = null;
     
     /**
      * Implementation of the functionality related to advertising a service on
@@ -1013,7 +1109,7 @@ public class AllJoynService extends Service implements Observer {
     	 * We depend on the user interface and model to work together to not
     	 * change the name out from under us while we are running.
     	 */
-    	String wellKnownName = NAME_PREFIX + "." + mChatApplication.hostGetChannelName();        
+    	String wellKnownName = NAME_PREFIX_SIGNAL + "." + mChatApplication.hostGetChannelName();        
         Status status = mBus.advertiseName(wellKnownName, SessionOpts.TRANSPORT_ANY);
         
         if (status == Status.OK) {
@@ -1024,6 +1120,8 @@ public class AllJoynService extends Service implements Observer {
         	return;
         }
     }
+    
+
     
     /**
      * Implementation of the functionality related to canceling an advertisement
@@ -1036,12 +1134,23 @@ public class AllJoynService extends Service implements Observer {
     	 * We depend on the user interface and model to work together to not
     	 * change the name out from under us while we are running.
     	 */
-    	String wellKnownName = NAME_PREFIX + "." + mChatApplication.hostGetChannelName();        
+    	String wellKnownName = NAME_PREFIX_SIGNAL + "." + mChatApplication.hostGetChannelName();        
         Status status = mBus.cancelAdvertiseName(wellKnownName, SessionOpts.TRANSPORT_ANY);
         
         if (status != Status.OK) {
-    		mChatApplication.alljoynError(ChatApplication.Module.HOST, "Unable to cancel advertisement of well-known name: (" + status + ")");
+    		mChatApplication.alljoynError(ChatApplication.Module.HOST, "Unable to cancel advertisement of well-known name for signal: (" + status + ")");
         	return;
+        }
+        
+        //only cancel advertise of the property interface if we're the host and we joined to our own session (i.e. we advertised the property interface)
+        if (mJoinedToSelf){
+        	wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.hostGetChannelName();
+        	status = mBus.cancelAdvertiseName(wellKnownName, SessionOpts.TRANSPORT_ANY);
+        	
+        	if (status != Status.OK) {
+        		mChatApplication.alljoynError(ChatApplication.Module.HOST, "Unable to cancel advertisement of well-known name for property: (" + status + ")");
+            	return;
+        	}
         }
         
         /*
@@ -1122,19 +1231,33 @@ public class AllJoynService extends Service implements Observer {
          * filter will be turned off in order to listen to remote chat
          * messages.
          */
+        /**
+         * The following is the code for host to join itself
+         */
         if (mHostChannelState != HostChannelState.IDLE) {
         	if (mChatApplication.useGetChannelName().equals(mChatApplication.hostGetChannelName())) {              
              	mUseChannelState = UseChannelState.JOINEDSELF;
               	mChatApplication.useSetChannelState(mUseChannelState);
         		mJoinedToSelf = true;
-                return;
+        		
+        		//once we know we joined to ourself, we need to advertise that FileInfo property can be retrieved from me, so:
+        		//1.we register the property onto the mBus
+        		//2.we request a wellKnownName on the mBus and advertise it
+        		doRegisterProperty();                
+        		doRequestNameAndAdvertiseProperty();               
+        		
+                return; //this mark the end of host joining itself
         	}
         }
+        
+        /**
+         * The following is the code for other client to join a remote host
+         */
        	/*
     	 * We depend on the user interface and model to work together to provide
     	 * a reasonable name.
     	 */
-    	String wellKnownName = NAME_PREFIX + "." + mChatApplication.useGetChannelName();
+    	String wellKnownName = NAME_PREFIX_SIGNAL + "." + mChatApplication.useGetChannelName();
         
         /*
          * Since we can act as the host of a channel, we know what the other
@@ -1174,6 +1297,15 @@ public class AllJoynService extends Service implements Observer {
         
         SignalEmitter emitter = new SignalEmitter(mChatService, mUseSessionId, SignalEmitter.GlobalBroadcast.Off);
         mChatInterface = emitter.getInterface(ChatInterface.class);
+        
+        // if we are a client joining a remote host, we can try to findAdvertisedName for the property interface
+        wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.hostGetChannelName();
+        Log.w(TAG, "try to findAdvertisedName: " + wellKnownName);
+        status = mBus.findAdvertisedName(wellKnownName);
+        if (status != Status.OK){
+        	mChatApplication.alljoynError(ChatApplication.Module.USE, "Unable to start finding advertised names: (" + status + ")");
+        	return;
+        }       
         
      	mUseChannelState = UseChannelState.JOINEDOTHER;
       	mChatApplication.useSetChannelState(mUseChannelState);
@@ -1240,8 +1372,8 @@ public class AllJoynService extends Service implements Observer {
     /**
      * The method related to broadcasting file server info
      */
-    private void doBroadcastUDT() {
-    	Log.i(TAG, "doBroadcastUDT()");
+    private void doBroadcastFileInfo() {
+    	Log.i(TAG, "doBroadcastFileInfo()");
     	
     	String IP = Utility.getIPAddress(true);
     	if (IP.isEmpty()){
@@ -1293,6 +1425,47 @@ public class AllJoynService extends Service implements Observer {
 		} 	
     	
     }
+    
+    /**
+     * First of all, this method is only supposed to be called by a client who joined a remote host, and only when it try to
+     * start transfer the file (Request File Button pressed). At this point, if local FileInfo is still null (it missed
+     * the broadcast when host selects the file, i.e. it joined late), then it will try to request a FileInfo update by calling
+     * here.
+     * 
+     * Here we first test if mFileInfoPropertyInterface is null or not, if it's null, host hasn't join its own session,
+     * treat it as if host hasn't select any file
+     * If not null, we call the mFileInfoPropertyInterface.getFileInfo() to request an update, and
+     * there are 2 possible results:
+     * 1. The host still hasn't select a file yet, at this point, a FileInfo initialized with 0 will be set into local mChatApplication
+     * 2. The host has selected the file, then a valid FileInfo object will be stored into local mChatApplication
+     * 
+     * Either way, a not null FileInfo object will be stored inside local mChatApplication, it's the UseFragment's responsibility 
+     * to test if the local FileInfo object is 0 initialized or not. If so, it knows host hasn't select, it should display a dialog 
+     * to user. If so, it's time to connect to host and start to transfer file to local sd card.
+     */
+    private void doUpdateFileInfo(){
+    	Log.i(TAG, "doUpdateFileInfo()");
+    	
+    	// if this is null, then host hasn't join its own channel, the behavior should be the same as the host hasn't select
+    	// the file yet, so we set a 0 initialized FileInfo object into the local mChatApplication
+    	if (mFileInfoPropertyInterface == null) {
+    		Log.w(TAG, "mFileInfoPropertyInterface is null!");
+    		mChatApplication.setFileInfo(new FileInfo());
+    	}
+    	else {
+    	// if mFileInfoPropertyInterface is not null, then we call mFileInfoPropertyInterface.getFileInfo() from the property
+    	// interface, and manually pull the FileInfo from the host, then store it into local mChatApplication
+    		try {
+    			
+				mChatApplication.setFileInfo(mFileInfoPropertyInterface.getFileInfo());		
+				
+			} catch (BusException e) {
+				// TODO Auto-generated catch block
+				mChatApplication.alljoynError(ChatApplication.Module.USE, "Bus exception while update FileInfo: (" + e + ")");				
+			}
+    	}
+    	
+    }
 
     /**
      * Our chat messages are going to be Bus Signals multicast out onto an 
@@ -1310,6 +1483,7 @@ public class AllJoynService extends Service implements Observer {
     	
     	public void FileInfo(FileInfo fi) throws BusException{    		
     	}
+
     }
 
     /**
@@ -1317,6 +1491,25 @@ public class AllJoynService extends Service implements Observer {
      * on the bus and allows us to send signals implementing messages
      */
     private ChatService mChatService = new ChatService();
+    
+    class FileInfoProperty implements FileInfoInterface, BusObject {
+
+		@Override
+		public org.alljoyn.bus.sample.chat.FileInfo getFileInfo() throws BusException {
+			
+			FileInfo mFileInfo =  mChatApplication.getFileInfo();
+			
+			if (mFileInfo == null){
+				//Me, the host, hasn't choose any file yet
+				mFileInfo = new FileInfo(); //a fileinfo filled with 0.0.0.0 and port 0
+				return mFileInfo;
+			}
+			
+			return mFileInfo;
+		}    	
+    }
+    
+    private FileInfoProperty mFileInfoProperty = new FileInfoProperty();
 
     /**
      * The signal handler for messages received from the AllJoyn bus.

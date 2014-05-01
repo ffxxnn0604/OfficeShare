@@ -9,8 +9,10 @@ import java.net.InetSocketAddress;
 import org.alljoyn.bus.sample.chat.ChatApplication;
 import org.alljoyn.bus.sample.chat.FileInfo;
 
+import android.content.Context;
 import android.os.Environment;
 import android.util.Log;
+import android.widget.Toast;
 
 import com.barchart.udt.ExceptionUDT;
 import com.barchart.udt.SocketUDT;
@@ -89,6 +91,7 @@ public class ClientFileTransfer implements Runnable {
 				// 3. close the socket
 				clientSocket.close();
 				Log.d(TAG,"The reqeust file is received and socket closed");
+				
 			}
 
 		} catch (ExceptionUDT u) {

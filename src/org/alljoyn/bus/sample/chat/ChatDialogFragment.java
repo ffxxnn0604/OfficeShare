@@ -78,6 +78,11 @@ public class ChatDialogFragment extends DialogFragment {
 				result = createAllJoynErrorDialog(mActivity, mChatApplication);
 			}
 			break;
+			case NoFileInfo:
+			{
+				result = createNoFileInfoDialog(mActivity, mChatApplication);
+			}
+			break;
 			default:
 			{
 				Log.e(TAG, "The DialogType is missing!");
@@ -330,25 +335,23 @@ public class ChatDialogFragment extends DialogFragment {
     	    	
     }
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    public Dialog createNoFileInfoDialog(Activity activity, final ChatApplication application) {
+    	
+    	Log.i(TAG, "createNoFileInfoDialog()");
+    	
+    	AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+    	builder.setMessage("No file has been selected by host, please wait and try later.")
+    		   .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+				
+				@Override
+				public void onClick(DialogInterface dialog, int which) {
+					// TODO Auto-generated method stub
+					dismiss();
+				}
+			});
+    	
+    	return builder.create();
+    	
+    }   
     
 }

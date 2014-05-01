@@ -686,7 +686,9 @@ public class ChatApplication extends Application implements Observable {
     /* file info related methods											 */
     /*-----------------------------------------------------------------------*/
 	
-	public static final String BROADCAST_UDT_EVENT = "BROADCAST_UDT_EVENT";
+	public static final String BROADCAST_FILEINFO_EVENT = "BROADCAST_FILEINFO_EVENT";
+	
+	public static final String UPDATE_FILEINFO_EVENT = "UPDATE_FILEINFO_EVENT";
 	
 	//this is the file info shared in this meeting, right now, only host can change it (only host can share file)
 	private FileInfo mFileInfo = null;
@@ -711,11 +713,30 @@ public class ChatApplication extends Application implements Observable {
 	
 	public synchronized FileInfo getFileInfo (){
 		Log.i(TAG, "get the file info (might be null)");
+		
+		/**
+		 * If mFileInfo is null, then:
+		 * 1.Host hasn't share any file yet
+		 * 2.We missed the signal sent out by host (we joined late)
+		 * Either way, we should request the fileInfo ourself.
+		 * 
+		 * If after request manually, it's still null, then we know host hasn't share yet,
+		 * return null to UseFragement, then UseFragment can display a message to user
+		 */
+		if (mFileInfo == null)
+		{
+			
+		}	
+		
 		return mFileInfo;
 	}
 	
-	public synchronized void sendBroadcastUDT(){
-		notifyObservers(BROADCAST_UDT_EVENT);
+	public synchronized void broadcastFileInfo(){
+		notifyObservers(BROADCAST_FILEINFO_EVENT);
+	}
+	
+	public synchronized void updateFileInfo(){
+		notifyObservers(UPDATE_FILEINFO_EVENT);
 	}
 	
 	private Uri uri = null;

@@ -36,4 +36,6 @@ public interface ChatInterface {
     
     @BusSignal(signature="(sqst)")
     public void FileInfo(FileInfo fi) throws BusException;
+    
+    
 }

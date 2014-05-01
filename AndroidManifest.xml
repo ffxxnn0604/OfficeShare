@@ -4,7 +4,7 @@
     android:versionCode="1"
     android:versionName="1.0">
     <uses-sdk
-        android:minSdkVersion="19"
+        android:minSdkVersion="18"
         android:targetSdkVersion="19" />
     <!-- Permission required to use the TCP transport -->
     <uses-permission android:name="android.permission.INTERNET"></uses-permission>
