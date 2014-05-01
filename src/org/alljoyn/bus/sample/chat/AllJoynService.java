@@ -1299,7 +1299,7 @@ public class AllJoynService extends Service implements Observer {
         mChatInterface = emitter.getInterface(ChatInterface.class);
         
         // if we are a client joining a remote host, we can try to findAdvertisedName for the property interface
-        wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.hostGetChannelName();
+        wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.useGetChannelName();
         Log.w(TAG, "try to findAdvertisedName: " + wellKnownName);
         status = mBus.findAdvertisedName(wellKnownName);
         if (status != Status.OK){

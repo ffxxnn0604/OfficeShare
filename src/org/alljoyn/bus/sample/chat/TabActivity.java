@@ -88,9 +88,9 @@ public class TabActivity extends FragmentActivity  implements ActionBar.TabListe
     public void onTabSelected(ActionBar.Tab tab, FragmentTransaction fragmentTransaction) {
         // When the given tab is selected, switch to the corresponding page in the ViewPager.
         mViewPager.setCurrentItem(tab.getPosition());
-        final InputMethodManager imm = (InputMethodManager)getSystemService(
-                Context.INPUT_METHOD_SERVICE);
-            imm.hideSoftInputFromWindow(mViewPager.getWindowToken(), 0);
+        //hide keyboard when switching between tabs
+        //final InputMethodManager imm = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
+        //imm.hideSoftInputFromWindow(mViewPager.getWindowToken(), 0);
     }
 
     @Override

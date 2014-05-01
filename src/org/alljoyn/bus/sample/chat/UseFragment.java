@@ -3,8 +3,6 @@ package org.alljoyn.bus.sample.chat;
 import java.util.List;
 
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -311,7 +309,7 @@ public class UseFragment extends Fragment implements Observer{
 	            {
 	            	mChatApplication.setFileInfo(mFileInfoNew);
 	            	mChatApplication.broadcastFileInfo();
-	            	Log.w(TAG, "sendBroadcastUDT called!");
+	            	Log.w(TAG, "broadcastFileInfo called!");
 	            }
 	            
 	            
@@ -335,11 +333,20 @@ public class UseFragment extends Fragment implements Observer{
 			
 			return;
 		}
+		else if (mFileInfo.fileServerIP.equalsIgnoreCase("0.0.0.0")){
+			//Host hasn't select a file, only a 0 initialized FileInfo object is returned
+			mChatApplication.updateFileInfo(); //request manual update, next time we should have a non-null mFileInfo
+			
+			ChatDialogFragment mChatDialogFragment = ChatDialogFragment.newInstance(DialogType.NoFileInfo);
+    		mChatDialogFragment.show(getFragmentManager(), "NoFileInfo");    	
+			
+			return;
+		}
 		
-		//if mFileInfo is not null, then we are OK to proceed and transfer the file from host
+		//if mFileInfo is not null and its content is not all 0, then we are OK to proceed and transfer the file from host
 		Log.w(TAG, "FileServerIP is " + mFileInfo.fileServerIP + "FileServerPort is "+mFileInfo.fileServerPort);
 		
-		mFileClientThread = new Thread(new ClientFileTransfer(mFileInfo.fileServerIP, mFileInfo.fileServerPort, mChatApplication));
+		mFileClientThread = new Thread(new ClientFileTransfer(mFileInfo.fileServerIP, mFileInfo.fileServerPort, mChatApplication, mHandler));
 		mFileClientThread.start();
 						
 		      
@@ -428,6 +435,9 @@ public class UseFragment extends Fragment implements Observer{
     	if (name == null) {
     		name = "Not set";
     	}
+    	else {
+    		Log.w(TAG, "name is not null, it's " + name);
+    	}
         mChannelName.setText(name);
         
         switch (channelState) {
@@ -508,6 +518,7 @@ public class UseFragment extends Fragment implements Observer{
     private static final int HANDLE_HISTORY_CHANGED_EVENT = 0;
     private static final int HANDLE_CHANNEL_STATE_CHANGED_EVENT = 1;
     private static final int HANDLE_ALLJOYN_ERROR_EVENT = 2;
+    private static final int HANDLE_FILE_COMPELTE_EVENT = 3;
     
     private Handler mHandler = new Handler() {
         public void handleMessage(Message msg) {
@@ -537,6 +548,14 @@ public class UseFragment extends Fragment implements Observer{
 	                alljoynError();
 	                break;
 	            }
+            case HANDLE_FILE_COMPELTE_EVENT:
+            	{
+            		Log.i(TAG, "mHandler.handlerMessage(): HANDLE_FILE_COMPLETE_EVENT");
+            		
+            		Toast toast = Toast.makeText(getActivity(), "File transfer complete", Toast.LENGTH_SHORT);
+            		toast.show();
+            		break;
+                }            	
             default:
                 break;
             }

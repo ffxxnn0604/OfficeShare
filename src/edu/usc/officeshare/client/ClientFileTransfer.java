@@ -9,10 +9,10 @@ import java.net.InetSocketAddress;
 import org.alljoyn.bus.sample.chat.ChatApplication;
 import org.alljoyn.bus.sample.chat.FileInfo;
 
-import android.content.Context;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
-import android.widget.Toast;
 
 import com.barchart.udt.ExceptionUDT;
 import com.barchart.udt.SocketUDT;
@@ -33,13 +33,16 @@ public class ClientFileTransfer implements Runnable {
 	private FileInfo mFileInfo;
 
 	private SocketUDT clientSocket;
+	
+	private Handler mHandler;
 
-	public ClientFileTransfer(String host, int port, ChatApplication mChatApplication) {
+	public ClientFileTransfer(String host, int port, ChatApplication mChatApplication, Handler useFragmentHandler) {
 		// TODO Auto-generated constructor stub
 
 		this.host = host;
 		this.port = port;
 		this.mApplication = mChatApplication;
+		this.mHandler = useFragmentHandler;
 
 		try {
 			clientSocket = new SocketUDT(TypeUDT.STREAM);
@@ -91,6 +94,11 @@ public class ClientFileTransfer implements Runnable {
 				// 3. close the socket
 				clientSocket.close();
 				Log.d(TAG,"The reqeust file is received and socket closed");
+				
+				
+				final int FILE_COMPLETE_EVENT = 3;
+				Message msg = mHandler.obtainMessage(FILE_COMPLETE_EVENT);
+				mHandler.sendMessage(msg);				
 				
 			}
 
