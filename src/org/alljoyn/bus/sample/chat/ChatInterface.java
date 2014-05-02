@@ -23,6 +23,9 @@ import org.alljoyn.bus.BusException;
 import org.alljoyn.bus.annotation.BusInterface;
 import org.alljoyn.bus.annotation.BusSignal;
 
+import edu.usc.officeshare.signal.FileInfo;
+import edu.usc.officeshare.signal.FlipPage;
+
 @BusInterface (name = "org.alljoyn.bus.samples.chat")
 public interface ChatInterface {
     /*
@@ -36,6 +39,9 @@ public interface ChatInterface {
     
     @BusSignal(signature="(sqst)")
     public void FileInfo(FileInfo fi) throws BusException;
+    
+    @BusSignal(signature="(dd)")
+    public void FlipPage(FlipPage fp) throws BusException;
     
     
 }

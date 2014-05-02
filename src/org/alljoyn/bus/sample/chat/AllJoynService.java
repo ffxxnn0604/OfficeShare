@@ -40,8 +40,9 @@ import android.os.Looper;
 import android.os.Message;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
+import edu.usc.officeshare.signal.FileInfo;
+import edu.usc.officeshare.signal.FlipPage;
 import edu.usc.officeshare.util.Utility;
-
 public class AllJoynService extends Service implements Observer {
 	private static final String TAG = "chat.AllJoynService";	
 
@@ -589,16 +590,16 @@ public class AllJoynService extends Service implements Observer {
 		        doDisconnect();
 		    	break;
             case START_DISCOVERY:
-	            doStartDiscovery();
+	            doStartDiscoverySignal();
             	break;
 	        case CANCEL_DISCOVERY:
-		        doStopDiscovery();
+		        doStopDiscoverySignal();
 		    	break;
 	        case REQUEST_NAME:
-		        doRequestName();
+		        doRequestNameSignal();
 		    	break;
 	        case RELEASE_NAME:
-		        doReleaseName();
+		        doReleaseNameSignal();
 		    	break;		
 	        case BIND_SESSION:
 		        doBindSession();
@@ -607,10 +608,10 @@ public class AllJoynService extends Service implements Observer {
 		        doUnbindSession();
 		        break;
 	        case ADVERTISE:
-		        doAdvertise();
+		        doAdvertiseSignal();
 		    	break;
 	        case CANCEL_ADVERTISE:
-		        doCancelAdvertise();		        
+		        doCancelAdvertiseSignal();		        
 		    	break;	
 	        case JOIN_SESSION:
 		        doJoinSession();
@@ -775,7 +776,7 @@ public class AllJoynService extends Service implements Observer {
             	mFileInfoPropertyInterface = null;
             }			
 		}
-    }
+    }    
     
     /**
      * An instance of an AllJoyn bus listener that knows what to do with
@@ -785,6 +786,12 @@ public class AllJoynService extends Service implements Observer {
      * explicitly declared class in this case.
      */
     private ChatBusListener mBusListener = new ChatBusListener();
+    
+    /**
+     * The session identifier of the "use" session that the application
+     * uses to talk to remote instances.  Set to -1 if not connected.
+     */
+    int mUseSessionId = -1;
     
     /**
      * The session identifier of the "host" session that the application
@@ -858,17 +865,7 @@ public class AllJoynService extends Service implements Observer {
     	mBusAttachmentState = BusAttachmentState.CONNECTED;
     }  
     
-    private void doRegisterProperty() {
-    	Log.i(TAG, "doRegisterProperty()");
-    	
-    	assert(mBusAttachmentState == BusAttachmentState.DISCONNECTED);
-    	Status status = mBus.registerBusObject(mFileInfoProperty, PROPERTY_OBJECT_PATH);
-        if (Status.OK != status) {
-    		mChatApplication.alljoynError(ChatApplication.Module.HOST, "Unable to register the FileInfo bus object: (" + status + ")");
-        	return;
-        }     
-        
-    }
+    
     
     /**
      * Implementation of the functionality related to disconnecting our app
@@ -880,140 +877,15 @@ public class AllJoynService extends Service implements Observer {
     private boolean doDisconnect() {
         Log.i(TAG, "doDisonnect()");
     	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
+    	//TODO test if we need to unregister the busObject
+    	/**
+    	 * added missing call of unregister the busObject
+    	 */
+    	//mBus.unregisterBusObject(mChatService);
     	mBus.unregisterBusListener(mBusListener);
     	mBus.disconnect();
 		mBusAttachmentState = BusAttachmentState.DISCONNECTED;
     	return true;
-    }
-    
-    /**
-     * Implementation of the functionality related to discovering remote apps
-     * which are hosting chat channels.  We expect that this method will only
-     * be called in the context of the AllJoyn bus handler thread; and while
-     * we are in the CONNECTED state.  Since this is a core bit of functionality
-     * for the "use" side of the app, we always do this at startup.
-     */
-    private void doStartDiscovery() {
-        Log.i(TAG, "doStartDiscovery()");
-    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
-      	Status status = mBus.findAdvertisedName(NAME_PREFIX_SIGNAL);
-    	if (status == Status.OK) {
-        	mBusAttachmentState = BusAttachmentState.DISCOVERING;
-        	return;
-    	} else {
-    		mChatApplication.alljoynError(ChatApplication.Module.USE, "Unable to start finding advertised names: (" + status + ")");
-        	return;
-    	}
-    }
-    
-    /**
-     * Implementation of the functionality related to stopping discovery of
-     * remote apps which are hosting chat channels.
-     */
-    private void doStopDiscovery() {
-        Log.i(TAG, "doStopDiscovery()");
-    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
-      	mBus.cancelFindAdvertisedName(NAME_PREFIX_SIGNAL);
-      	
-      	mBusAttachmentState = BusAttachmentState.CONNECTED;
-    }
-       
-    /**
-     * Implementation of the functionality related to requesting a well-known
-     * name from an AllJoyn bus attachment.
-     */
-    private void doRequestName() {
-        Log.i(TAG, "doRequestName()");
-    	
-        /*
-         * In order to request a name, the bus attachment must at least be
-         * connected.
-         */
-        int stateRelation = mBusAttachmentState.compareTo(BusAttachmentState.DISCONNECTED);
-    	assert (stateRelation >= 0);
-    	
-    	/*
-    	 * We depend on the user interface and model to work together to not
-    	 * get this process started until a valid name is set in the channel name.
-    	 */
-    	String wellKnownName = NAME_PREFIX_SIGNAL + "." + mChatApplication.hostGetChannelName();
-        Status status = mBus.requestName(wellKnownName, BusAttachment.ALLJOYN_REQUESTNAME_FLAG_DO_NOT_QUEUE);
-        if (status == Status.OK) {
-          	mHostChannelState = HostChannelState.NAMED;
-          	mChatApplication.hostSetChannelState(mHostChannelState);
-        } else {
-    		mChatApplication.alljoynError(ChatApplication.Module.USE, "Unable to acquire well-known name: (" + status + ")");
-        }
-    }
-    
-    private void doRequestNameAndAdvertiseProperty() {
-    	Log.i(TAG, "doRequestNameProperty()");
-    	
-    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
-    	
-    	int flag = BusAttachment.ALLJOYN_REQUESTNAME_FLAG_REPLACE_EXISTING | BusAttachment.ALLJOYN_REQUESTNAME_FLAG_DO_NOT_QUEUE;
-        String wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.hostGetChannelName();
-    	Status status = mBus.requestName(wellKnownName, flag);
-        if (status == Status.OK) {
-        	/*
-        	 * If we successfully obtain a well-known name from the bus 
-        	 * advertise the same well-known name
-        	 */
-        	status = mBus.advertiseName(wellKnownName, SessionOpts.TRANSPORT_ANY);
-            if (status != Status.OK) {
-            	 /*
-                 * If we are unable to advertise the name, release
-                 * the name from the local bus.
-                 */
-                status = mBus.releaseName(wellKnownName);
-                mChatApplication.alljoynError(ChatApplication.Module.HOST, "Unable to advertise the FileInfo bus object: (" + status + ")");
-            	return;
-            }
-        } 
-    	
-    }
-    
-    /**
-     * Implementation of the functionality related to releasing a well-known
-     * name from an AllJoyn bus attachment.
-     */
-    private void doReleaseName() {
-        Log.i(TAG, "doReleaseName()");
-        
-        /*
-         * In order to release a name, the bus attachment must at least be
-         * connected.
-         */
-        int stateRelation = mBusAttachmentState.compareTo(BusAttachmentState.DISCONNECTED);
-    	assert (stateRelation >= 0);
-    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED || mBusAttachmentState == BusAttachmentState.DISCOVERING);
-    	
-    	/*
-    	 * We need to progress monotonically down the hosted channel states
-    	 * for sanity.
-    	 */
-    	assert(mHostChannelState == HostChannelState.NAMED);
-    	
-    	/*
-    	 * We depend on the user interface and model to work together to not
-    	 * change the name out from under us while we are running.
-    	 */
-    	String wellKnownName = NAME_PREFIX_SIGNAL + "." + mChatApplication.hostGetChannelName();
-
-    	/*
-    	 * There's not a lot we can do if the bus attachment refuses to release
-    	 * the name.  It is not a fatal error, though, if it doesn't.  This is
-    	 * because bus attachments can have multiple names.
-    	 */
-    	mBus.releaseName(wellKnownName);
-    	
-    	//if we are the host leaving the channel, also release the property name from the bus
-    	if(mJoinedToSelf){
-    		wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.hostGetChannelName();
-    		mBus.releaseName(wellKnownName);
-    	}
-    	mHostChannelState = HostChannelState.IDLE;
-      	mChatApplication.hostSetChannelState(mHostChannelState);
     }
     
     /**
@@ -1099,10 +971,117 @@ public class AllJoynService extends Service implements Observer {
     
     
     /**
+     * Implementation of the functionality related to discovering remote apps
+     * which are hosting chat channels.  We expect that this method will only
+     * be called in the context of the AllJoyn bus handler thread; and while
+     * we are in the CONNECTED state.  Since this is a core bit of functionality
+     * for the "use" side of the app, we always do this at startup.
+     */
+    private void doStartDiscoverySignal() {
+        Log.i(TAG, "doStartDiscovery()");
+    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
+      	Status status = mBus.findAdvertisedName(NAME_PREFIX_SIGNAL);
+    	if (status == Status.OK) {
+        	mBusAttachmentState = BusAttachmentState.DISCOVERING;
+        	return;
+    	} else {
+    		mChatApplication.alljoynError(ChatApplication.Module.USE, "Unable to start finding advertised names: (" + status + ")");
+        	return;
+    	}
+    }
+    
+    
+    
+    /**
+     * Implementation of the functionality related to stopping discovery of
+     * remote apps which are hosting chat channels.
+     */
+    private void doStopDiscoverySignal() {
+        Log.i(TAG, "doStopDiscovery()");
+    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
+      	mBus.cancelFindAdvertisedName(NAME_PREFIX_SIGNAL);
+      	
+      	mBusAttachmentState = BusAttachmentState.CONNECTED;
+    }
+    
+    
+       
+    /**
+     * Implementation of the functionality related to requesting a well-known
+     * name from an AllJoyn bus attachment.
+     */
+    private void doRequestNameSignal() {
+        Log.i(TAG, "doRequestName()");
+    	
+        /*
+         * In order to request a name, the bus attachment must at least be
+         * connected.
+         */
+        int stateRelation = mBusAttachmentState.compareTo(BusAttachmentState.DISCONNECTED);
+    	assert (stateRelation >= 0);
+    	
+    	/*
+    	 * We depend on the user interface and model to work together to not
+    	 * get this process started until a valid name is set in the channel name.
+    	 */
+    	String wellKnownName = NAME_PREFIX_SIGNAL + "." + mChatApplication.hostGetChannelName();
+        Status status = mBus.requestName(wellKnownName, BusAttachment.ALLJOYN_REQUESTNAME_FLAG_DO_NOT_QUEUE);
+        if (status == Status.OK) {
+          	mHostChannelState = HostChannelState.NAMED;
+          	mChatApplication.hostSetChannelState(mHostChannelState);
+        } else {
+    		mChatApplication.alljoynError(ChatApplication.Module.USE, "Unable to acquire well-known name: (" + status + ")");
+        }
+    }    
+    
+    /**
+     * Implementation of the functionality related to releasing a well-known
+     * name from an AllJoyn bus attachment.
+     */
+    private void doReleaseNameSignal() {
+        Log.i(TAG, "doReleaseNameSignal()");
+        
+        /*
+         * In order to release a name, the bus attachment must at least be
+         * connected.
+         */
+        int stateRelation = mBusAttachmentState.compareTo(BusAttachmentState.DISCONNECTED);
+    	assert (stateRelation >= 0);
+    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED || mBusAttachmentState == BusAttachmentState.DISCOVERING);
+    	
+    	/*
+    	 * We need to progress monotonically down the hosted channel states
+    	 * for sanity.
+    	 */
+    	assert(mHostChannelState == HostChannelState.NAMED);
+    	
+    	/*
+    	 * We depend on the user interface and model to work together to not
+    	 * change the name out from under us while we are running.
+    	 */
+    	String wellKnownName = NAME_PREFIX_SIGNAL + "." + mChatApplication.hostGetChannelName();
+
+    	/*
+    	 * There's not a lot we can do if the bus attachment refuses to release
+    	 * the name.  It is not a fatal error, though, if it doesn't.  This is
+    	 * because bus attachments can have multiple names.
+    	 */
+    	mBus.releaseName(wellKnownName);
+    	
+    	//if we are the host leaving the channel, also release the property name from the bus
+    	if(!mPropertyNameCleaned){
+    		wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.hostGetChannelName();
+    		mBus.releaseName(wellKnownName);
+    	}
+    	mHostChannelState = HostChannelState.IDLE;
+      	mChatApplication.hostSetChannelState(mHostChannelState);
+    }
+    
+    /**
      * Implementation of the functionality related to advertising a service on
      * an AllJoyn bus attachment.
      */
-    private void doAdvertise() {
+    private void doAdvertiseSignal() {
         Log.i(TAG, "doAdvertise()");
         
        	/*
@@ -1120,14 +1099,12 @@ public class AllJoynService extends Service implements Observer {
         	return;
         }
     }
-    
-
-    
+        
     /**
      * Implementation of the functionality related to canceling an advertisement
      * on an AllJoyn bus attachment.
      */
-    private void doCancelAdvertise() {
+    private void doCancelAdvertiseSignal() {
         Log.i(TAG, "doCancelAdvertise()");
         
        	/*
@@ -1142,16 +1119,7 @@ public class AllJoynService extends Service implements Observer {
         	return;
         }
         
-        //only cancel advertise of the property interface if we're the host and we joined to our own session (i.e. we advertised the property interface)
-        if (mJoinedToSelf){
-        	wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.hostGetChannelName();
-        	status = mBus.cancelAdvertiseName(wellKnownName, SessionOpts.TRANSPORT_ANY);
-        	
-        	if (status != Status.OK) {
-        		mChatApplication.alljoynError(ChatApplication.Module.HOST, "Unable to cancel advertisement of well-known name for property: (" + status + ")");
-            	return;
-        	}
-        }
+        
         
         /*
          * There's not a lot we can do if the bus attachment refuses to cancel
@@ -1160,6 +1128,130 @@ public class AllJoynService extends Service implements Observer {
      	mHostChannelState = HostChannelState.BOUND;
       	mChatApplication.hostSetChannelState(mHostChannelState);
     }
+    
+    //cleaned means cancel advertised and released from the bus
+    boolean mPropertyNameUnregistered = true;
+    boolean mPropertyNameCleaned = true; //when we start, we shouldn't have advertised the property name yet    
+    
+    private void doStartDiscoveryProperty() {
+    	Log.i(TAG, "doStartDiscoveryProperty()");
+    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
+    	 // if we are a client joining a remote host, we can try to findAdvertisedName for the property interface
+        if (!mJoinedToSelf) {
+        	/**
+        	 * For some strange reason, during the discovery, only partial advertised name can be used, not full name
+        	 */
+        	Status status = mBus.findAdvertisedName(NAME_PREFIX_PROPERTY);
+            if (status != Status.OK){
+            	mChatApplication.alljoynError(ChatApplication.Module.USE, "Unable to start finding advertised names: (" + status + ")");
+            	return;
+            } 
+        }    	    
+    }
+    
+    private void doStopDiscoveryProperty() {
+    	Log.e(TAG, "doStopDiscoveryProperty()");
+    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
+    	
+    	if (!mJoinedToSelf){
+    		Log.e(TAG, "try to cancelFindAdvertisedName!");
+    		mBus.cancelFindAdvertisedName(NAME_PREFIX_PROPERTY);
+    	}    	
+    }
+    
+    private void doRegisterProperty() {
+    	Log.i(TAG, "doRegisterProperty()");
+    	
+    	assert(mBusAttachmentState == BusAttachmentState.DISCONNECTED);
+    	Status status = mBus.registerBusObject(mFileInfoProperty, PROPERTY_OBJECT_PATH);
+        if (Status.OK != status) {
+    		mChatApplication.alljoynError(ChatApplication.Module.HOST, "Unable to register the FileInfo bus object: (" + status + ")");
+        	return;
+        }
+        mPropertyNameUnregistered = false;
+        
+    }
+    
+    private void doUnregisterProperty() {
+    	Log.i(TAG, "doUnregisterProperty()");
+    	
+    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
+    	
+    	if (mJoinedToSelf && !mPropertyNameUnregistered) {
+    		mBus.unregisterBusObject(mFileInfoProperty);
+    	}
+    	
+    }
+    
+    private void doRequestNameAndAdvertiseProperty() {
+    	Log.i(TAG, "doRequestNameProperty()");
+    	
+    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
+    	
+    	int flag = BusAttachment.ALLJOYN_REQUESTNAME_FLAG_REPLACE_EXISTING | BusAttachment.ALLJOYN_REQUESTNAME_FLAG_DO_NOT_QUEUE;
+        String wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.hostGetChannelName();
+    	Status status = mBus.requestName(wellKnownName, flag);
+        if (status == Status.OK) {
+        	/*
+        	 * If we successfully obtain a well-known name from the bus 
+        	 * advertise the same well-known name
+        	 */
+        	mPropertyNameCleaned = false;
+        	
+        	status = mBus.advertiseName(wellKnownName, SessionOpts.TRANSPORT_ANY);
+            if (status != Status.OK) {
+            	 /*
+                 * If we are unable to advertise the name, release
+                 * the name from the local bus.
+                 */
+                status = mBus.releaseName(wellKnownName);
+                mPropertyNameCleaned = true;
+                mChatApplication.alljoynError(ChatApplication.Module.HOST, "Unable to advertise the FileInfo bus object: (" + status + ")");
+            	return;
+            }
+        } 
+    	
+    }
+    
+    private void doCancelAdvertiseAndReleasePropertyName() {
+    	
+    	Log.i(TAG, "doCancelAdvertiseAndReleasePropertyName()");
+    	
+    	int stateRelation = mBusAttachmentState.compareTo(BusAttachmentState.DISCONNECTED);
+    	assert (stateRelation >= 0);
+    	assert(mBusAttachmentState == BusAttachmentState.CONNECTED);
+    	
+    	//only cancel advertise of the property interface if we're the host and we joined to our own session (i.e. we advertised the property interface)
+        if (mJoinedToSelf && !mPropertyNameCleaned){
+        	String wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.hostGetChannelName();
+        	
+        	//first cancel advertise
+        	Status status = mBus.cancelAdvertiseName(wellKnownName, SessionOpts.TRANSPORT_ANY);        	
+        	if (status != Status.OK) {
+        		mChatApplication.alljoynError(ChatApplication.Module.USE, "Unable to cancel advertisement of well-known name for property: (" + status + ")");
+            	return;
+        	}
+        	
+        	//then relase the name from the bus
+        	status = mBus.releaseName(wellKnownName);
+        	if (status != Status.OK) {
+        		mChatApplication.alljoynError(ChatApplication.Module.USE, "Unable to relase well-known name for property: (" + status + ")");
+            	return;
+        	}
+        	
+        	//now propertyName is un-advertised and released (i.e. it's clean)
+        	mPropertyNameCleaned = true;
+        	
+        }
+    }
+    
+    
+    
+    
+    
+    
+    
+    
     
     /**
      * Implementation of the functionality related to joining an existing
@@ -1299,13 +1391,7 @@ public class AllJoynService extends Service implements Observer {
         mChatInterface = emitter.getInterface(ChatInterface.class);
         
         // if we are a client joining a remote host, we can try to findAdvertisedName for the property interface
-        wellKnownName = NAME_PREFIX_PROPERTY + "." + mChatApplication.useGetChannelName();
-        Log.w(TAG, "try to findAdvertisedName: " + wellKnownName);
-        status = mBus.findAdvertisedName(wellKnownName);
-        if (status != Status.OK){
-        	mChatApplication.alljoynError(ChatApplication.Module.USE, "Unable to start finding advertised names: (" + status + ")");
-        	return;
-        }       
+        doStartDiscoveryProperty();     
         
      	mUseChannelState = UseChannelState.JOINEDOTHER;
       	mChatApplication.useSetChannelState(mUseChannelState);
@@ -1323,17 +1409,20 @@ public class AllJoynService extends Service implements Observer {
         	mBus.leaveSession(mUseSessionId);
         }
         mUseSessionId = -1;
+        
+        //for host
+        mChatApplication.setFileInfo(new FileInfo());//set a 0 initialized FileInfo into mChatApplication
+        doUnregisterProperty();
+        doCancelAdvertiseAndReleasePropertyName();
+        //for client
+        doStopDiscoveryProperty();
+        
         mJoinedToSelf = false;
      	mUseChannelState = UseChannelState.IDLE;
       	mChatApplication.useSetChannelState(mUseChannelState);
+      	     	
     }
-    
-    /**
-     * The session identifier of the "use" session that the application
-     * uses to talk to remote instances.  Set to -1 if not connectecd.
-     */
-    int mUseSessionId = -1;
-    
+        
     /**
      * Implementation of the functionality related to sending messages out over
      * an existing remote session.  Note that we always send all of the
@@ -1484,6 +1573,10 @@ public class AllJoynService extends Service implements Observer {
     	public void FileInfo(FileInfo fi) throws BusException{    		
     	}
 
+		@Override
+		public void FlipPage(edu.usc.officeshare.signal.FlipPage fp) throws BusException {
+		}
+
     }
 
     /**
@@ -1495,7 +1588,7 @@ public class AllJoynService extends Service implements Observer {
     class FileInfoProperty implements FileInfoInterface, BusObject {
 
 		@Override
-		public org.alljoyn.bus.sample.chat.FileInfo getFileInfo() throws BusException {
+		public edu.usc.officeshare.signal.FileInfo getFileInfo() throws BusException {
 			
 			FileInfo mFileInfo =  mChatApplication.getFileInfo();
 			
@@ -1575,16 +1668,19 @@ public class AllJoynService extends Service implements Observer {
     	Log.i(TAG, "FileInfo(): use sessionId is " + mUseSessionId);
     	Log.i(TAG, "FileInfo(): message sessionId is " + ctx.sessionId);
     	
+    	//drop signal sent out by me
     	if (ctx.sender.equals(uniqueName)){
     		Log.i(TAG, "FileInfo(): dropped our own signal received on session " + ctx.sessionId);
     		return;
     	}
     	
+    	//also drop signal on the session I host but didn't join
     	if (mJoinedToSelf == false && ctx.sessionId == mHostSessionId) {
     		Log.i(TAG, "FileInfo(): dropped signal recevied on hosted session " + ctx.sessionId + " when not joined-to-self");
     		return;
     	}
     	
+    	//for signal from session I join, I need to handle
     	String nickname = "Xianan";
     	
     	Log.i(TAG, "FileInfo(): signal: server: " + fi.fileServerIP + " server port: " + fi.fileServerPort + " fileName: " + fi.fileName + " fileSize: " + fi.fileSize);
@@ -1594,6 +1690,43 @@ public class AllJoynService extends Service implements Observer {
     	
     	mChatApplication.newRemoteUserMessage(nickname, fileInfo);    
     
+    }
+    
+    @BusSignalHandler(iface = "org.alljoyn.bus.samples.chat", signal = "FlipPage")
+    public void FlipPage(FlipPage fp) {
+    	
+    	//get this unique name of this running instance, if I am the sender of this flip page action
+    	//then I will ignore this action and not flip page anymore
+    	String uniqueName = mBus.getUniqueName();
+    	MessageContext ctx = mBus.getMessageContext();
+    	Log.i(TAG, "FlipPage(): use sessionId is " + mUseSessionId);
+    	Log.i(TAG, "FlipPage(): message sessionId is " + ctx.sessionId);
+    	
+    	//drop signal sent out by me (don't repeat the flip page action I just did
+    	if (ctx.sender.equals(uniqueName)) {
+    		Log.i(TAG, "FlipPage(): dropped our own signal received on session " + ctx.sessionId);
+    		return;
+    	}
+    	
+    	//if I hosted the session, but I didn't join the session, then I should ignore anything related
+    	//to flip page signal on this session. (This should never happen, since the host need to share
+    	//and open the pdf before any other can retrieve the file from host and start sending the signal
+    	if (mJoinedToSelf == false && ctx.sessionId == mHostSessionId) {
+    		Log.i(TAG, "FlipPage(): dropped signal received on hosted session " + ctx.sessionId + " when not joined to self");
+    		return;
+    	}
+    	
+    	//When receiving a signal from the session I join, allJoynService call to mChatApplication, and
+    	//ask it to notify the MuPDFReaderView to 
+    	Log.w(TAG, "Velocity X: " + fp.velocityX + "Velocity Y: " + fp.velocityY);
+    	Log.d(TAG, "Calling doFilpPage() of mChatApplication from AllJoynService");
+    	
+    	//store the flip page parameter into the mChatApplicaion
+    	//mChatApplication.setFlipPageParameter();
+    	//ask mChatApplication to notify MuPDFReaderView about new event, so that MuPDFReaderView could
+    	//get the parameters by mChatApplication.getFlipPageParameter(), then replay the flip page actions 
+    	//mChatApplication.newRemoteFlipPage();
+    	
     }
     
     /*

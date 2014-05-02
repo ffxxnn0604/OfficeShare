@@ -23,6 +23,8 @@ import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 
+import edu.usc.officeshare.signal.FileInfo;
+
 import android.app.Application;
 import android.content.ComponentName;
 import android.content.Intent;
@@ -547,10 +549,22 @@ public class ChatApplication extends Application implements Observable {
     /*-----------------------------------------------------------------------*/
 	
 	/**
+	 * Don't keep an infinite amount of history.  Although we don't want to 
+	 * admit it, this is a toy application, so we just keep a little history.
+	 */
+	final int HISTORY_MAX = 20;
+	
+	/**
 	 * The object we use in notifications to indicate that the history state of
 	 * the model has changed and observers need to synchronize with it.
 	 */
 	public static final String HISTORY_CHANGED_EVENT = "HISTORY_CHANGED_EVENT";
+	
+	/**
+	 * The history list is the list of all messages that have been originated
+	 * or received by the "use" channel.
+	 */
+	private List<String> mHistory = new ArrayList<String>();
 	
 	/**
 	 * Whenever a message comes in from the AllJoyn Service over its channel
@@ -565,18 +579,6 @@ public class ChatApplication extends Application implements Observable {
 	private void addInboundItem(String nickname, String message) {
 		addHistoryItem(nickname, message);
 	}
-	
-	/**
-	 * Don't keep an infinite amount of history.  Although we don't want to 
-	 * admit it, this is a toy application, so we just keep a little history.
-	 */
-	final int HISTORY_MAX = 20;
-	
-	/**
-	 * The history list is the list of all messages that have been originated
-	 * or received by the "use" channel.
-	 */
-	private List<String> mHistory = new ArrayList<String>();
 	
 	/**
 	 * Whenever a user in the channel types a message, it needs to result in

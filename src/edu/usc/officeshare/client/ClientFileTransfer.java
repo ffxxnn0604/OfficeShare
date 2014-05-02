@@ -7,7 +7,6 @@ import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
 
 import org.alljoyn.bus.sample.chat.ChatApplication;
-import org.alljoyn.bus.sample.chat.FileInfo;
 
 import android.os.Environment;
 import android.os.Handler;
@@ -18,6 +17,7 @@ import com.barchart.udt.ExceptionUDT;
 import com.barchart.udt.SocketUDT;
 import com.barchart.udt.TypeUDT;
 
+import edu.usc.officeshare.signal.FileInfo;
 import edu.usc.officeshare.util.Utility;
 
 public class ClientFileTransfer implements Runnable {

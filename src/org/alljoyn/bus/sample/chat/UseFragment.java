@@ -1,12 +1,16 @@
 package org.alljoyn.bus.sample.chat;
 
+import java.io.File;
 import java.util.List;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.provider.OpenableColumns;
@@ -25,6 +29,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import edu.usc.officeshare.client.ClientFileTransfer;
 import edu.usc.officeshare.server.FileServer;
+import edu.usc.officeshare.signal.FileInfo;
+import edu.usc.officeshare.util.FileUtility;
 import edu.usc.officeshare.util.OfficeShareConstants;
 import edu.usc.officeshare.util.Utility;
 
@@ -250,6 +256,14 @@ public class UseFragment extends Fragment implements Observer{
 				}            
 		        
 		        getFileMetaData(uri);
+		        		        File mFile = FileUtility.getFile(getActivity(), uri);
+	            Uri mUri = FileUtility.getUri(mFile);
+
+	            Intent intent = new Intent(getActivity(), com.artifex.mupdfdemo.MuPDFActivity.class);
+	    		intent.setAction(Intent.ACTION_VIEW);
+	    		//intent.setData(Uri.parse("content://com.estrongs.files/storage/sdcard0/2000camry.pdf"));
+	    		intent.setData(mUri);
+	    		startActivity(intent); 
 	        }       
 	        
 	        
@@ -344,7 +358,8 @@ public class UseFragment extends Fragment implements Observer{
 		}
 		
 		//if mFileInfo is not null and its content is not all 0, then we are OK to proceed and transfer the file from host
-		Log.w(TAG, "FileServerIP is " + mFileInfo.fileServerIP + "FileServerPort is "+mFileInfo.fileServerPort);
+		Log.w(TAG, "FileServerIP is " + mFileInfo.fileServerIP + "FileServerPort is "+mFileInfo.fileServerPort
+				+"FileName: " + mFileInfo.fileName + "FileSize: " + mFileInfo.fileSize);
 		
 		mFileClientThread = new Thread(new ClientFileTransfer(mFileInfo.fileServerIP, mFileInfo.fileServerPort, mChatApplication, mHandler));
 		mFileClientThread.start();
@@ -550,10 +565,18 @@ public class UseFragment extends Fragment implements Observer{
 	            }
             case HANDLE_FILE_COMPELTE_EVENT:
             	{
-            		Log.i(TAG, "mHandler.handlerMessage(): HANDLE_FILE_COMPLETE_EVENT");
-            		
-            		Toast toast = Toast.makeText(getActivity(), "File transfer complete", Toast.LENGTH_SHORT);
-            		toast.show();
+            		Toast toast = Toast.makeText(getActivity(), "File Complete!", Toast.LENGTH_SHORT);
+            	toast.show();
+            	
+            	File dirSDRoot = Environment.getExternalStorageDirectory();
+				File destFile = new File(dirSDRoot, mChatApplication.getFileInfo().fileName);
+				Uri mUri = FileUtility.getUri(destFile);
+
+	            Intent intent = new Intent(getActivity(), com.artifex.mupdfdemo.MuPDFActivity.class);
+	    		intent.setAction(Intent.ACTION_VIEW);
+	    		//intent.setData(Uri.parse("content://com.estrongs.files/storage/sdcard0/2000camry.pdf"));
+	    		intent.setData(mUri);
+	    		startActivity(intent); 
             		break;
                 }            	
             default:
