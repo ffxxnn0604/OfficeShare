@@ -230,6 +230,11 @@ public class AllJoynService extends Service implements Observer {
         	mHandler.sendMessage(message);
         }
         
+        else if (qualifier.equals(ChatApplication.SEND_FLIP_PAGE_EVENT)){
+        	Message message = mHandler.obtainMessage(HANDLE_SEND_FLIP_PAGE_EVENT);
+        	mHandler.sendMessage(message);        	
+        }
+        
         else {
         	Log.w(TAG, "AllJoyn Server was notified with an irrelavent event: " + qualifier);
         }
@@ -315,6 +320,12 @@ public class AllJoynService extends Service implements Observer {
 			        	mBackgroundHandler.updateFileInfo();
 			        }
 			        break;
+		        case HANDLE_SEND_FLIP_PAGE_EVENT:
+			        {
+			        	Log.i(TAG,"mHandler.handlerMessgae(): SEND_FLIP_PAGE_EVENT");
+			        	mBackgroundHandler.sendFlipPageAction();
+			        }
+			        break;
 	            default:
 	                break;
             }
@@ -359,6 +370,8 @@ public class AllJoynService extends Service implements Observer {
     private static final int HANDLE_BROADCAST_FILEINFO_EVENT = 7;
     
     private static final int HANDLE_UPDATE_FILEINFO_EVENT = 8;
+    
+    private static final int HANDLE_SEND_FLIP_PAGE_EVENT = 9;
     
     /**
      * Enumeration of the states of the AllJoyn bus attachment.  This
@@ -576,6 +589,12 @@ public class AllJoynService extends Service implements Observer {
         	Message msg = mBackgroundHandler.obtainMessage(UPDATE_FILEINFO);
         	mBackgroundHandler.sendMessage(msg);
         }
+        
+        public void sendFlipPageAction(){
+        	Log.i(TAG, "mBackgroundHandler.sendFlipPageAction()");
+        	Message msg = mBackgroundHandler.obtainMessage(SEND_FLIP_PAGE);
+        	mBackgroundHandler.sendMessage(msg);
+        }
                  
         /**
          * The message handler for the worker thread that handles background
@@ -631,6 +650,9 @@ public class AllJoynService extends Service implements Observer {
 	        case UPDATE_FILEINFO:
 	        	doUpdateFileInfo();
 	        	break;
+	        case SEND_FLIP_PAGE:
+	        	doSendFlipPage();
+	        	break;
 		    default:
 		    	break;
             }
@@ -653,6 +675,7 @@ public class AllJoynService extends Service implements Observer {
     private static final int SEND_MESSAGES = 14;
     private static final int BROADCAST_FILEINFO = 15;
     private static final int UPDATE_FILEINFO = 16;
+    private static final int SEND_FLIP_PAGE = 17;
     
     /**
      * The instance of the AllJoyn background thread handler.  It is created
@@ -1456,7 +1479,34 @@ public class AllJoynService extends Service implements Observer {
 			}
     	}
     }
+    
+    private void doSendFlipPage() {
+    	Log.i(TAG, "doSendFlipPage()");
 
+        FlipPage mFlipPage;
+        while ((mFlipPage = mChatApplication.getOutboundItemFlipPage()) != null) {
+            Log.i(TAG, "doSendFlipPage(): sending x: " + mFlipPage.velocityX + " y: " + mFlipPage.velocityY);
+            /*
+             * If we are joined to a remote session, we send the message over
+             * the mChatInterface.  If we are implicityly joined to a session
+             * we are hosting, we send the message over the mHostChatInterface.
+             * The mHostChatInterface may or may not exist since it is created
+             * when the sessionJoined() callback is fired in the
+             * SessionPortListener, so we have to check for it.
+             */
+			try {
+				if (mJoinedToSelf) {
+					if (mHostChatInterface != null) {
+						mHostChatInterface.FlipPage(mFlipPage);
+					}
+				} else {
+					mChatInterface.FlipPage(mFlipPage);
+				}
+			} catch (BusException ex) {
+	    		mChatApplication.alljoynError(ChatApplication.Module.USE, "Bus exception while sending Flip Page Action: (" + ex + ")");
+			}
+    	}
+    }
     
     /**
      * The method related to broadcasting file server info
@@ -1717,15 +1767,14 @@ public class AllJoynService extends Service implements Observer {
     	}
     	
     	//When receiving a signal from the session I join, allJoynService call to mChatApplication, and
-    	//ask it to notify the MuPDFReaderView to 
+    	//ask it to notify the MuPDFReaderView to replay the action
     	Log.w(TAG, "Velocity X: " + fp.velocityX + "Velocity Y: " + fp.velocityY);
     	Log.d(TAG, "Calling doFilpPage() of mChatApplication from AllJoynService");
     	
-    	//store the flip page parameter into the mChatApplicaion
-    	//mChatApplication.setFlipPageParameter();
+    	//store the flip page action into the mChatApplicaion
     	//ask mChatApplication to notify MuPDFReaderView about new event, so that MuPDFReaderView could
     	//get the parameters by mChatApplication.getFlipPageParameter(), then replay the flip page actions 
-    	//mChatApplication.newRemoteFlipPage();
+    	mChatApplication.newRemoteUserFlipPage(fp);
     	
     }
     

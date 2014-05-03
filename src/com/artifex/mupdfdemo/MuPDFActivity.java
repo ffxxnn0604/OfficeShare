@@ -1,11 +1,16 @@
 package com.artifex.mupdfdemo;
 
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executor;
 
+import org.alljoyn.bus.sample.chat.ChatApplication;
+import org.alljoyn.bus.sample.chat.ChatDialogFragment;
+import org.alljoyn.bus.sample.chat.DialogType;
+import org.alljoyn.bus.sample.chat.Observable;
+import org.alljoyn.bus.sample.chat.Observer;
 import org.alljoyn.bus.sample.chat.R;
-
-import com.artifex.mupdfdemo.ReaderView.ViewMapper;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -19,12 +24,11 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
-import android.text.Editable;
-import android.text.TextWatcher;
+import android.os.Message;
+import android.os.SystemClock;
 import android.text.method.PasswordTransformationMethod;
 import android.util.Log;
-import android.view.KeyEvent;
-import android.view.Menu;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.TranslateAnimation;
@@ -35,8 +39,8 @@ import android.widget.ImageButton;
 import android.widget.RelativeLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.widget.Toast;
 import android.widget.ViewAnimator;
+import edu.usc.officeshare.signal.FlipPage;
 
 class ThreadPerTaskExecutor implements Executor {
 	public void execute(Runnable r) {
@@ -44,7 +48,7 @@ class ThreadPerTaskExecutor implements Executor {
 	}
 }
 
-public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupport
+public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupport, Observer
 {
 	
 	private final static String TAG = "MuPDFActivity";
@@ -84,12 +88,16 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	private SearchTask   mSearchTask;
 	private AlertDialog.Builder mAlertBuilder;
 	private boolean    mLinkHighlight = false;
-	private final Handler mHandler = new Handler();
+	//private final Handler mHandler = new Handler();
 	private boolean mAlertsActive= false;
 	private boolean mReflow = false;
 	private AsyncTask<Void,Void,MuPDFAlert> mAlertTask;
 	private AlertDialog mAlertDialog;
 	private FilePicker mFilePicker;
+	
+	private ChatApplication mChatApplication = null;
+	private List<FlipPage> mInboundListFlipPage;
+
 
 	public void createAlertWaiter() {
 		mAlertsActive = true;
@@ -252,6 +260,8 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	public void onCreate(Bundle savedInstanceState)
 	{
 		super.onCreate(savedInstanceState);
+		
+		//Log.e("MuPDF", "onCreate called");
 
 		mAlertBuilder = new AlertDialog.Builder(this);
 
@@ -340,6 +350,15 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 			alert.show();
 			return;
 		}
+		
+		mInboundListFlipPage = new ArrayList<FlipPage>();
+		
+		//when this activity is created, we register ourself with the Model mChatApplication
+		mChatApplication = (ChatApplication) getApplication();
+		mChatApplication.checkin();
+		
+		mChatApplication.addObserver(this);
+		Log.e(TAG,"MuPDF register itself as observer!");
 
 		createUI(savedInstanceState);
 	}
@@ -695,6 +714,9 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 			edit.putInt("page"+mFileName, mDocView.getDisplayedViewIndex());
 			edit.commit();
 		}
+		
+		mChatApplication.deleteObserver(this);
+		Log.e(TAG, "onPause called!");
 	}
 
 	public void onDestroy()
@@ -712,6 +734,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		}
 		core = null;
 		super.onDestroy();
+		Log.e(TAG, "onDestroy called!");
 	}
 
 	private void setButtonEnabled(ImageButton button, boolean enabled) {
@@ -1171,5 +1194,81 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		startActivityForResult(intent, FILEPICK_REQUEST);
 	}
 	
+	public void newUserFling(float x, float y){
+		
+    	Log.i(TAG, "Local User generated a fling action!");   	
+    	
+    	mChatApplication.newLocalUserFlipPage(new FlipPage(x,y));
+	}
+	
+	@Override
+	public void update(Observable o, Object arg) {
+		// TODO Auto-generated method stub
+		Log.i(TAG, "update(" + arg + ")");
+		String qualifier = (String)arg;
+		
+		if (qualifier.equals(ChatApplication.RECEIVE_FLIP_PAGE_EVENT)){
+			Message msg = mHandler.obtainMessage(HANDLE_RECEIVE_FLIP_PAGE_EVENT);
+			mHandler.sendMessage(msg);
+		}
+		/*else if (qualifier.equals(ChatApplication.ALLJOYN_ERROR_EVENT)) {
+			Message msg = mHandler.obtainMessage(HANDLE_ALLJOYN_ERROR_EVENT);
+			mHandler.sendMessage(msg);
+		}*/
+		else {
+			Log.w(TAG, "MuPDF reader activity was not notifiered with an irrelavent event: " + qualifier);
+		}	
+		
+	}
+	
+	private static final int HANDLE_RECEIVE_FLIP_PAGE_EVENT = 0;
+    //private static final int HANDLE_ALLJOYN_ERROR_EVENT = 1;
+    
+    private Handler mHandler = new Handler() {
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+            // TODO add code to TabActivity, and ask it to popBackStack() from its getSupportFragmentManager()
+//            case HANDLE_APPLICATION_QUIT_EVENT:
+//	            {
+//	                Log.i(TAG, "mHandler.handleMessage(): HANDLE_APPLICATION_QUIT_EVENT");
+//	                finish();
+//	                break;
+//	            }	             
+            
+            case HANDLE_RECEIVE_FLIP_PAGE_EVENT:
+	            {
+	                Log.i(TAG, "mHandler.handleMessage(): HANDLE_CHANNEL_STATE_CHANGED_EVENT");
+	                replayRemoteActions();
+	                break;
+	            }
+            /*case HANDLE_ALLJOYN_ERROR_EVENT:
+	            {
+	                Log.i(TAG, "mHandler.handleMessage(): HANDLE_ALLJOYN_ERROR_EVENT");
+	                //alljoynError();
+	                break;
+	            }    */	
+            default:
+                break;
+            }
+        }
+    };
+    
+    private void replayRemoteActions() {
+    	Log.i(TAG, "replayRemoteActions()");
+    	mInboundListFlipPage.clear();
+    	MotionEvent dummyE1 = MotionEvent.obtain(SystemClock.uptimeMillis(),SystemClock.uptimeMillis(), 0, 200, 200, 1);
+    	MotionEvent dummyE2 = MotionEvent.obtain(SystemClock.uptimeMillis(),SystemClock.uptimeMillis(), 2, 250, 250, 1);
+    	//NOTE: getHistoryFlipPage will clear the mInboundFlipPage after a clone is created,
+    	//so that it will be emptied for future actions.
+    	//Therefore, each time we only get newly delivered actions, not all actions from the beginning
+    	mInboundListFlipPage = mChatApplication.getHistoryFlipPage();
+    	for (FlipPage fp : mInboundListFlipPage){
+    		//NOTE: there might be a loss conversion from double to float
+    		mDocView.onSimulateFling(dummyE1, dummyE2, (float)fp.velocityX, (float)fp.velocityY);
+    	}
+    	dummyE1.recycle();
+    	dummyE2.recycle();   	
+    	
+    }
 	
 }

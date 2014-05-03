@@ -23,13 +23,13 @@ import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 
-import edu.usc.officeshare.signal.FileInfo;
-
 import android.app.Application;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.net.Uri;
 import android.util.Log;
+import edu.usc.officeshare.signal.FileInfo;
+import edu.usc.officeshare.signal.FlipPage;
 
 /**
  * The ChatAppliation class serves as the Model (in the sense of the common
@@ -391,6 +391,7 @@ public class ChatApplication extends Application implements Observable {
 	 */
 	public synchronized void useJoinChannel() {
 		clearHistory();
+		clearInboundFlipPage();
 		notifyObservers(USE_CHANNEL_STATE_CHANGED_EVENT);
 		notifyObservers(USE_JOIN_CHANNEL_EVENT);
 	}
@@ -497,7 +498,7 @@ public class ChatApplication extends Application implements Observable {
 	}
 
 	/*-----------------------------------------------------------------------*/
-    /* Out-bound related methods (sending out messages)						 */
+    /* Chat related methods													 */
     /*-----------------------------------------------------------------------*/
 		
 	final int OUTBOUND_MAX = 5;
@@ -543,10 +544,6 @@ public class ChatApplication extends Application implements Observable {
 			return mOutbound.remove(0);
 		}
 	}
-	
-	/*-----------------------------------------------------------------------*/
-    /* History related methods (In-bound message)							 */
-    /*-----------------------------------------------------------------------*/
 	
 	/**
 	 * Don't keep an infinite amount of history.  Although we don't want to 
@@ -624,6 +621,154 @@ public class ChatApplication extends Application implements Observable {
         for (String string : mHistory) {
             clone.add(new String(string));
         }
+        return clone;
+    }
+    
+    /*-----------------------------------------------------------------------------------*/
+    /* callback methods for AlljoynService to treat a local and a remote flipPage action */
+    /*-----------------------------------------------------------------------------------*/
+	
+	/**
+	 * Whenever our local user types a message, we need to send it out on the
+	 * channel, which we do by calling addOutboundItem.  This will eventually
+	 * result in an AllJoyn Bus Signal being sent to the other participants on
+	 * the channel.  Since the sessions that implement the channel don't "echo"
+	 * back to the source, we need to echo the message into our history.
+	 */
+	public synchronized void newLocalUserFlipPage(FlipPage fpAction) {
+		//when we call here, the local page flip already happened, no need to do it again
+		//so we only trying to tell remote to flip if needed.
+		//addInboundItemFlipPage(fpAction);
+		if (useGetChannelState() == AllJoynService.UseChannelState.JOINEDSELF
+			|| useGetChannelState() == AllJoynService.UseChannelState.JOINEDOTHER) {
+			addOutboundItemFlipPage(fpAction);
+		}
+	}
+	
+	/**
+	 * Whenever a user types a message into the channel, we expect the AllJoyn 
+	 * Service local to that user to send the message to everyone participating
+	 * on the channel.  At each participant, the messages arrive in the AllJoyn
+	 * Service as a Bus Signal.  The Service handles the signals and passes the
+	 * associated messages on to us here.  We expect the nickname to be the
+	 * unique ID of the sending bus attachment.  This is not very user friendly,
+	 * but is convenient and guaranteed to be unique.
+	 */
+	public synchronized void newRemoteUserFlipPage(FlipPage fpAction) {
+		addInboundItemFlipPage(fpAction);
+	}
+    
+    /*-----------------------------------------------------------------------*/
+    /* Flip page related methods											 */
+    /*-----------------------------------------------------------------------*/
+		
+	//final int OUTBOUND_MAX = 5; //we'll reuse the same limits as the chat
+	
+	/**
+	 * The object we use in notifications to indicate that the the user has
+	 * entered a message and it is queued to be sent to the outside world.
+	 */
+	public static final String SEND_FLIP_PAGE_EVENT = "SEND_FLIP_PAGE_EVENT";
+	
+	/**
+	 * The outbound list is the list of all messages that have been originated
+	 * by our local user and are designed for the outside world.
+	 */
+	private List<FlipPage> mOutboundFlipPage = new ArrayList<FlipPage>();
+	
+	/**
+	 * Whenever the local user types a message for distribution to the channel
+	 * it calls newLocalMessage.  We are called to queue up the message and
+	 * send a notification to all of our observers indicating that the we have
+	 * something ready to go out.  We expect that the AllJoyn Service will
+	 * eventually respond by calling back in here to get items off of the queue
+	 * and send them down the session corresponding to the channel.  
+	 */
+	private void addOutboundItemFlipPage(FlipPage fpAction) {
+		if (mOutboundFlipPage.size() == OUTBOUND_MAX) {
+			mOutboundFlipPage.remove(0);
+		}
+		mOutboundFlipPage.add(fpAction);
+		notifyObservers(SEND_FLIP_PAGE_EVENT);
+	}
+	
+	/**
+	 * Whenever the local user types a message for distribution to the channel
+	 * it is queued to a list of outbound messages.  The AllJoyn Service is
+	 * notified and calls in here to get the outbound messages that need to be
+	 * sent.
+	 */
+	public synchronized FlipPage getOutboundItemFlipPage() {
+		if (mOutboundFlipPage.isEmpty()) {
+			return null;
+		} else {
+			return mOutboundFlipPage.remove(0);
+		}
+	}
+	
+	/**
+	 * Don't keep an infinite amount of history.  Although we don't want to 
+	 * admit it, this is a toy application, so we just keep a little history.
+	 */
+	//final int HISTORY_MAX = 20; //we'll reuse the same limits as the chat
+	
+	/**
+	 * The object we use in notifications to indicate that the history state of
+	 * the model has changed and observers need to synchronize with it.
+	 */
+	public static final String RECEIVE_FLIP_PAGE_EVENT = "RECEIVE_FLIP_PAGE_EVENT";
+	
+	/**
+	 * The history list is the list of all messages that have been originated
+	 * or received by the "use" channel.
+	 */
+	private List<FlipPage> mInboundFlipPage = new ArrayList<FlipPage>();
+	
+	/**
+	 * Whenever a message comes in from the AllJoyn Service over its channel
+	 * session, it calls in here.  We just add the message item to the history
+	 * list, with the "nickname" provided by Service.  This is currently
+	 * expected to be the unique name of the bus attachment originating the 
+	 * message.  Once the message is saved in the history, a change notification
+	 * will be sent to all observers indicating that the history has changed.
+	 * The user interface part of the application is then expected to wake up
+	 * and synchronize itself to the new history.
+	 */
+	private synchronized void addInboundItemFlipPage(FlipPage fpAction) {
+		if (mInboundFlipPage.size() == HISTORY_MAX) {
+			mInboundFlipPage.remove(0);
+		}
+        
+		mInboundFlipPage.add(fpAction);
+		
+		//since this is only called when a remote Flip Page action is sent to us
+		//we need to notify MuPDFActivity to replay the action
+		notifyObservers(RECEIVE_FLIP_PAGE_EVENT);
+	}
+	
+	/**
+	 * Clear the history list.  Whenever a user joins a new channel, we want
+	 * to get rid of any existing history to avoid confusion.
+	 */
+	private void clearInboundFlipPage() {
+		mInboundFlipPage.clear();
+	}
+	
+	/**
+	 * Whenever a new message is added to the history list, an update
+	 * notification is sent to all of the observers registered to this object
+	 * that indicates that the history list has changed.  When the observer
+	 * hears that the list has changed, it calls in here to get the new
+	 * contents.  Since we have no idea how or when the caller is going to 
+	 * access or change the list, and we are deeply paranoid, we provide a
+	 * deep copy.
+	 */
+    public synchronized List<FlipPage> getHistoryFlipPage() {
+        List<FlipPage> clone = new ArrayList<FlipPage>(mInboundFlipPage.size());
+        for (FlipPage fp : mInboundFlipPage) {
+            clone.add(new FlipPage(fp));
+        }
+        mInboundFlipPage.clear();
         return clone;
     }
     

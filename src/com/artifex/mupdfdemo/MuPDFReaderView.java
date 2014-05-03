@@ -11,7 +11,7 @@ import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
 
-public class MuPDFReaderView extends ReaderView {
+public class MuPDFReaderView extends ReaderView{
 	
 	private final static String TAG = "MuPDFReaderView";
 	
@@ -25,7 +25,8 @@ public class MuPDFReaderView extends ReaderView {
 	protected void onTapMainDocArea() {}
 	protected void onDocMotion() {}
 	protected void onHit(Hit item) {};
-
+	
+	
 	public void setLinksEnabled(boolean b) {
 		mLinksEnabled = b;
 		resetupChildren();
@@ -51,7 +52,8 @@ public class MuPDFReaderView extends ReaderView {
 		if (tapPageMargin < 100)
 			tapPageMargin = 100;
 		if (tapPageMargin > dm.widthPixels/5)
-			tapPageMargin = dm.widthPixels/5;
+			tapPageMargin = dm.widthPixels/5;	
+		
 	}
 
 	public boolean onSingleTapUp(MotionEvent e) {
@@ -130,6 +132,11 @@ public class MuPDFReaderView extends ReaderView {
 		return true;
 	}
 
+	/**
+	 * When a real fling triggered by user gesture, we also need to send this action back to MuPDFActivity,
+	 * then it will save this action into mChatApplication, and notify the mChatApplication about a
+	 * SEND_FLIP_PAGE_EVENT
+	 */
 	@Override
 	public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
 			float velocityY) {
@@ -137,10 +144,27 @@ public class MuPDFReaderView extends ReaderView {
 		
 		switch (mMode) {
 		case Viewing:
-			//return super.onFling(e1, e2, velocityX, velocityY);
-			return super.onFling(MotionEvent.obtain(SystemClock.uptimeMillis(),SystemClock.uptimeMillis(), 0, 200, 200, 1), 
+			MuPDFActivity mMuPDFAct = (MuPDFActivity)mContext;
+			mMuPDFAct.newUserFling(velocityX, velocityY);
+			return super.onFling(e1, e2, velocityX, velocityY);			
+			
+			/*return super.onFling(MotionEvent.obtain(SystemClock.uptimeMillis(),SystemClock.uptimeMillis(), 0, 200, 200, 1), 
 								 MotionEvent.obtain(SystemClock.uptimeMillis(),SystemClock.uptimeMillis(), 2, 250, 250, 1), 
-								 velocityX, velocityY);
+								 velocityX, velocityY);*/
+		default:
+			return true;
+		}
+	}
+	
+	//this is called from MuPDFActivity when a HANDLE_RECEIVE_FLIP_PAGE_EVENT msg is received on the mHandler in MuPDFActivity
+	public boolean onSimulateFling(MotionEvent dummyE1, MotionEvent dummyE2, float velocityX, float velocityY) {
+		Log.i(TAG, "onSimulatedFling() method called!");
+		
+		switch (mMode) {
+		case Viewing:
+			
+			return super.onFling(dummyE1, dummyE2, velocityX, velocityY);	
+			
 		default:
 			return true;
 		}
@@ -275,4 +299,5 @@ public class MuPDFReaderView extends ReaderView {
 	protected void onScaleChild(View v, Float scale) {
 		((MuPDFView) v).setScale(scale);
 	}
+		
 }

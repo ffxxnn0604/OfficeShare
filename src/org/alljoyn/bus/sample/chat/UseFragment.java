@@ -256,7 +256,7 @@ public class UseFragment extends Fragment implements Observer{
 				}            
 		        
 		        getFileMetaData(uri);
-		        		        File mFile = FileUtility.getFile(getActivity(), uri);
+		        File mFile = FileUtility.getFile(getActivity(), uri);
 	            Uri mUri = FileUtility.getUri(mFile);
 
 	            Intent intent = new Intent(getActivity(), com.artifex.mupdfdemo.MuPDFActivity.class);

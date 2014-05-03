@@ -14,4 +14,14 @@ public class FlipPage {
 		velocityY = 0.0;
 	}
 	
+	public FlipPage(FlipPage fp){
+		velocityX = fp.velocityX;
+		velocityY = fp.velocityY;
+	}
+	
+	public FlipPage(double vX, double vY){
+		velocityX = vX;
+		velocityY = vY;
+	}
+	
 }
