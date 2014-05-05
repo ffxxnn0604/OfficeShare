@@ -393,6 +393,7 @@ public class ChatApplication extends Application implements Observable {
 	public synchronized void useJoinChannel() {
 		clearHistory();
 		clearInboundFlipPage();
+		clearInboundDrawings();
 		notifyObservers(USE_CHANNEL_STATE_CHANGED_EVENT);
 		notifyObservers(USE_JOIN_CHANNEL_EVENT);
 	}
@@ -773,8 +774,163 @@ public class ChatApplication extends Application implements Observable {
         return clone;
     }
     
-    private ArrayList<ArrayList<Point>> mDrawings = new ArrayList<ArrayList<Point>>();
+    /*-----------------------------------------------------------------------------------*/
+    /* callback methods for AlljoynService to treat a local and a remote flipPage action */
+    /*-----------------------------------------------------------------------------------*/
+	
+	/**
+	 * Whenever our local user types a message, we need to send it out on the
+	 * channel, which we do by calling addOutboundItem.  This will eventually
+	 * result in an AllJoyn Bus Signal being sent to the other participants on
+	 * the channel.  Since the sessions that implement the channel don't "echo"
+	 * back to the source, we need to echo the message into our history.
+	 */
+	public synchronized void newLocalUserDrawing(ArrayList<Point> mNewLocalDrawing) {
+		//when we call here, the local page flip already happened, no need to do it again
+		//so we only trying to tell remote to flip if needed.
+		//addInboundItemFlipPage(fpAction);
+		if (useGetChannelState() == AllJoynService.UseChannelState.JOINEDSELF
+			|| useGetChannelState() == AllJoynService.UseChannelState.JOINEDOTHER) {
+			addOutboundItemDrawing(mNewLocalDrawing);
+		}
+	}
+	
+	/**
+	 * Whenever a user types a message into the channel, we expect the AllJoyn 
+	 * Service local to that user to send the message to everyone participating
+	 * on the channel.  At each participant, the messages arrive in the AllJoyn
+	 * Service as a Bus Signal.  The Service handles the signals and passes the
+	 * associated messages on to us here.  We expect the nickname to be the
+	 * unique ID of the sending bus attachment.  This is not very user friendly,
+	 * but is convenient and guaranteed to be unique.
+	 */
+	public synchronized void newRemoteUserDrawing(ArrayList<Point> mNewRemoteDrawing) {
+		addInboundItemDrawing(mNewRemoteDrawing);
+	}
     
+    /*-----------------------------------------------------------------------*/
+    /* Flip page related methods											 */
+    /*-----------------------------------------------------------------------*/
+		
+	//final int OUTBOUND_MAX = 5; //we'll reuse the same limits as the chat
+	
+	/**
+	 * The object we use in notifications to indicate that the the user has
+	 * entered a message and it is queued to be sent to the outside world.
+	 */
+	public static final String SEND_DRAWING_EVENT = "SEND_DRAWING_EVENT";
+	
+	/**
+	 * The outbound list is the list of all the drawings that have been originated
+	 * by our local user and are designed for the outside world.
+	 */
+	private ArrayList<ArrayList<Point>> mOutboundDrawings = new ArrayList<ArrayList<Point>>();
+	
+	/**
+	 * Whenever the local user types a message for distribution to the channel
+	 * it calls newLocalMessage.  We are called to queue up the message and
+	 * send a notification to all of our observers indicating that the we have
+	 * something ready to go out.  We expect that the AllJoyn Service will
+	 * eventually respond by calling back in here to get items off of the queue
+	 * and send them down the session corresponding to the channel.  
+	 */
+	private void addOutboundItemDrawing(ArrayList<Point> mNewLocalDrawing) {
+		if (mOutboundDrawings.size() == OUTBOUND_MAX) {
+			mOutboundDrawings.remove(0);
+		}
+		mOutboundDrawings.add(mNewLocalDrawing);
+		notifyObservers(SEND_DRAWING_EVENT);
+	}
+	
+	/**
+	 * Whenever the local user types a message for distribution to the channel
+	 * it is queued to a list of outbound messages.  The AllJoyn Service is
+	 * notified and calls in here to get the outbound messages that need to be
+	 * sent.
+	 */
+	public synchronized ArrayList<Point> getOutboundItemDrawing() {
+		if (mOutboundDrawings.isEmpty()) {
+			return null;
+		} else {
+			return mOutboundDrawings.remove(0);
+		}
+	}
+	
+	/**
+	 * Don't keep an infinite amount of history.  Although we don't want to 
+	 * admit it, this is a toy application, so we just keep a little history.
+	 */
+	//final int HISTORY_MAX = 20; //we'll reuse the same limits as the chat
+	
+	/**
+	 * The object we use in notifications to indicate that the history state of
+	 * the model has changed and observers need to synchronize with it.
+	 */
+	public static final String RECEIVE_DRAWING_EVENT = "RECEIVE_DRAWING_EVENT";
+	
+	/**
+	 * The history list is the list of all messages that have been originated
+	 * or received by the "use" channel.
+	 */
+	private ArrayList<ArrayList<Point>> mInboundDrawings = new ArrayList<ArrayList<Point>>();
+	
+	/**
+	 * Whenever a message comes in from the AllJoyn Service over its channel
+	 * session, it calls in here.  We just add the message item to the history
+	 * list, with the "nickname" provided by Service.  This is currently
+	 * expected to be the unique name of the bus attachment originating the 
+	 * message.  Once the message is saved in the history, a change notification
+	 * will be sent to all observers indicating that the history has changed.
+	 * The user interface part of the application is then expected to wake up
+	 * and synchronize itself to the new history.
+	 */
+	private synchronized void addInboundItemDrawing(ArrayList<Point> mNewRemoteDrawing) {
+		if (mInboundDrawings.size() == HISTORY_MAX) {
+			mInboundDrawings.remove(0);
+		}
+        
+		mInboundDrawings.add(mNewRemoteDrawing);
+		
+		//since this is only called when a remote Flip Page action is sent to us
+		//we need to notify MuPDFActivity to replay the action
+		notifyObservers(RECEIVE_DRAWING_EVENT);
+	}
+	
+	/**
+	 * Clear the history list.  Whenever a user joins a new channel, we want
+	 * to get rid of any existing history to avoid confusion.
+	 */
+	private void clearInboundDrawings() {
+		
+		for(ArrayList<Point> mDrawing : mInboundDrawings){
+			mDrawing.clear();
+		}		
+		mInboundDrawings.clear();
+	}
+	
+	/**
+	 * Whenever a new message is added to the history list, an update
+	 * notification is sent to all of the observers registered to this object
+	 * that indicates that the history list has changed.  When the observer
+	 * hears that the list has changed, it calls in here to get the new
+	 * contents.  Since we have no idea how or when the caller is going to 
+	 * access or change the list, and we are deeply paranoid, we provide a
+	 * deep copy.
+	 */
+    public synchronized ArrayList<ArrayList<Point>> getInboundDrawings() {
+        ArrayList<ArrayList<Point>> clone = new ArrayList<ArrayList<Point>>(mInboundDrawings.size());
+        ArrayList<Point> drawing = null;
+        for (ArrayList<Point> mDrawing : mInboundDrawings) {
+            drawing = new ArrayList<Point>();
+            for(Point mPoint:mDrawing)
+            {
+            	drawing.add(new Point(mPoint));
+            }
+            clone.add(drawing);
+        }
+        clearInboundDrawings();
+        return clone;
+    }
     
     /*-----------------------------------------------------------------------*/
     /* Observer related methods												 */

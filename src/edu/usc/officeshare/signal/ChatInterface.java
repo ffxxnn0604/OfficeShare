@@ -41,5 +41,7 @@ public interface ChatInterface {
     @BusSignal(signature="(dd)")
     public void FlipPage(FlipPage fp) throws BusException;
     
+    @BusSignal(signature="a")
+    public void Drawing(byte[] mDrawing) throws BusException;
     
 }

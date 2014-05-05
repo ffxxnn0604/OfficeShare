@@ -15,6 +15,8 @@
  */
 package org.alljoyn.bus.sample.chat;
 
+import java.util.ArrayList;
+
 import org.alljoyn.bus.BusAttachment;
 import org.alljoyn.bus.BusException;
 import org.alljoyn.bus.BusListener;
@@ -44,6 +46,8 @@ import edu.usc.officeshare.signal.ChatInterface;
 import edu.usc.officeshare.signal.FileInfo;
 import edu.usc.officeshare.signal.FileInfoInterface;
 import edu.usc.officeshare.signal.FlipPage;
+import edu.usc.officeshare.signal.Point;
+import edu.usc.officeshare.util.DrawingConversion;
 import edu.usc.officeshare.util.Utility;
 public class AllJoynService extends Service implements Observer {
 	private static final String TAG = "chat.AllJoynService";	
@@ -237,6 +241,11 @@ public class AllJoynService extends Service implements Observer {
         	mHandler.sendMessage(message);        	
         }
         
+        else if (qualifier.equals(ChatApplication.SEND_DRAWING_EVENT)){
+        	Message message = mHandler.obtainMessage(HANDLE_SEND_DRAWING_EVENT);
+        	mHandler.sendMessage(message);        	
+        }
+        
         else {
         	Log.w(TAG, "AllJoyn Server was notified with an irrelavent event: " + qualifier);
         }
@@ -328,6 +337,11 @@ public class AllJoynService extends Service implements Observer {
 			        	mBackgroundHandler.sendFlipPageAction();
 			        }
 			        break;
+		        case HANDLE_SEND_DRAWING_EVENT:
+			        {
+			        	Log.i(TAG, "mHandler.handlerMessgae(): SEND_DRAWING_EVENT");
+			        	mBackgroundHandler.sendDrawing();
+			        }
 	            default:
 	                break;
             }
@@ -374,6 +388,8 @@ public class AllJoynService extends Service implements Observer {
     private static final int HANDLE_UPDATE_FILEINFO_EVENT = 8;
     
     private static final int HANDLE_SEND_FLIP_PAGE_EVENT = 9;
+    
+    private static final int HANDLE_SEND_DRAWING_EVENT = 10;
     
     /**
      * Enumeration of the states of the AllJoyn bus attachment.  This
@@ -597,6 +613,12 @@ public class AllJoynService extends Service implements Observer {
         	Message msg = mBackgroundHandler.obtainMessage(SEND_FLIP_PAGE);
         	mBackgroundHandler.sendMessage(msg);
         }
+        
+        public void sendDrawing() {
+        	Log.i(TAG, "mBackgroundHandler.sendDrawing()");
+        	Message msg = mBackgroundHandler.obtainMessage(SEND_DRAWING);
+        	mBackgroundHandler.sendMessage(msg);
+        }
                  
         /**
          * The message handler for the worker thread that handles background
@@ -655,6 +677,9 @@ public class AllJoynService extends Service implements Observer {
 	        case SEND_FLIP_PAGE:
 	        	doSendFlipPage();
 	        	break;
+	        case SEND_DRAWING:
+	        	doSendDrawing();
+	        	break;
 		    default:
 		    	break;
             }
@@ -678,6 +703,7 @@ public class AllJoynService extends Service implements Observer {
     private static final int BROADCAST_FILEINFO = 15;
     private static final int UPDATE_FILEINFO = 16;
     private static final int SEND_FLIP_PAGE = 17;
+    private static final int SEND_DRAWING = 18;
     
     /**
      * The instance of the AllJoyn background thread handler.  It is created
@@ -1510,6 +1536,29 @@ public class AllJoynService extends Service implements Observer {
     	}
     }
     
+    private void doSendDrawing() {
+    	Log.i(TAG, "doSendDrawing()");
+    	
+    	ArrayList<Point> mOutboundDrawing;
+    	byte[] bOutboundDrawing;
+    	while ((mOutboundDrawing = mChatApplication.getOutboundItemDrawing()) != null) {
+    		Log.i(TAG, "doSendDrawing(): convert arraylist to byte array now");
+    		bOutboundDrawing = DrawingConversion.drawingToBytes(mOutboundDrawing);
+    		
+    		try{
+    		if (mJoinedToSelf) {
+				if (mHostChatInterface != null) {
+					mHostChatInterface.Drawing(bOutboundDrawing);
+				}
+			} else {
+				mChatInterface.Drawing(bOutboundDrawing);
+			}
+    		} catch (BusException ex){
+    			mChatApplication.alljoynError(ChatApplication.Module.USE, "Bus exception while sending Drawing byte array: (" + ex + ")");
+    		}
+    	}
+    }
+    
     /**
      * The method related to broadcasting file server info
      */
@@ -1601,7 +1650,6 @@ public class AllJoynService extends Service implements Observer {
 				mChatApplication.setFileInfo(mFileInfoPropertyInterface.getFileInfo());		
 				
 			} catch (BusException e) {
-				// TODO Auto-generated catch block
 				mChatApplication.alljoynError(ChatApplication.Module.USE, "Bus exception while update FileInfo: (" + e + ")");				
 			}
     	}
@@ -1628,6 +1676,10 @@ public class AllJoynService extends Service implements Observer {
 		@Override
 		public void FlipPage(edu.usc.officeshare.signal.FlipPage fp) throws BusException {
 		}
+
+		@Override
+		public void Drawing(byte[] mDrawing) throws BusException {
+		}	
 
     }
 
@@ -1777,6 +1829,37 @@ public class AllJoynService extends Service implements Observer {
     	//ask mChatApplication to notify MuPDFReaderView about new event, so that MuPDFReaderView could
     	//get the parameters by mChatApplication.getFlipPageParameter(), then replay the flip page actions 
     	mChatApplication.newRemoteUserFlipPage(fp);
+    	
+    }
+    
+    @BusSignalHandler(iface = "org.alljoyn.bus.samples.chat", signal = "Drawing")
+    public void Drawing(byte[] mInboundDrawing){
+    	
+    	//get this unique name of this running instance, if I am the sender of this flip page action
+    	//then I will ignore this action and not flip page anymore
+    	String uniqueName = mBus.getUniqueName();
+    	MessageContext ctx = mBus.getMessageContext();
+    	Log.i(TAG, "Drawing(): use sessionId is " + mUseSessionId);
+    	Log.i(TAG, "Drawing(): message sessionId is " + ctx.sessionId);
+    	
+    	//drop signal sent out by me (don't repeat the flip page action I just did
+    	if (ctx.sender.equals(uniqueName)) {
+    		Log.i(TAG, "Drawing(): dropped our own signal received on session " + ctx.sessionId);
+    		return;
+    	}
+    	
+    	//if I hosted the session, but I didn't join the session, then I should ignore anything related
+    	//to flip page signal on this session. (This should never happen, since the host need to share
+    	//and open the pdf before any other can retrieve the file from host and start sending the signal
+    	if (mJoinedToSelf == false && ctx.sessionId == mHostSessionId) {
+    		Log.i(TAG, "Drawing(): dropped signal received on hosted session " + ctx.sessionId + " when not joined to self");
+    		return;
+    	}
+    	
+    	//store the drawing points into the mChatApplicaion
+    	//ask mChatApplication to notify MuPDFReaderView about new event, so that MuPDFReaderView could
+    	//get the parameters by mChatApplication.getInboundDrawing(), then replay the drawings 
+    	mChatApplication.newRemoteUserDrawing(DrawingConversion.toDrawing(mInboundDrawing));  	
     	
     }
     

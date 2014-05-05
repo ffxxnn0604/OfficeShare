@@ -99,7 +99,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	private ChatApplication mChatApplication = null;
 	private List<FlipPage> mInboundListFlipPage;
 	private ArrayList<Point> mDrawing = null;//this is for temporary store of the passed back points from MuPDFReaderView
-	private ArrayList<Point> mInboundDrawing = null;//this is for replay remote drawings notified by mChatApplication
+	private ArrayList<ArrayList<Point>> mInboundDrawings = null;//this is for replay remote drawings notified by mChatApplication
 
 
 	public void createAlertWaiter() {
@@ -671,10 +671,10 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		mDocView.refresh(mReflow);
 	}
 
-	private void toggleReflow() {
+	/*private void toggleReflow() {
 		reflowModeSet(!mReflow);
 		showInfo(mReflow ? getString(R.string.entering_reflow_mode) : getString(R.string.leaving_reflow_mode));
-	}
+	}*/
 
 	@Override
 	protected void onSaveInstanceState(Bundle outState) {
@@ -865,7 +865,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		mPageNumberView.setText(String.format("%d / %d", index+1, core.countPages()));
 	}
 
-	private void printDoc() {
+	/*private void printDoc() {
 		if (!core.fileFormat().startsWith("PDF")) {
 			showInfo(getString(R.string.format_currently_not_supported));
 			return;
@@ -885,7 +885,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		printIntent.setDataAndType(docUri, "aplication/pdf");
 		printIntent.putExtra("title", mFileName);
 		startActivityForResult(printIntent, PRINT_REQUEST);
-	}
+	}*/
 
 	private void showInfo(String message) {
 		mInfoView.setText(message);
@@ -1055,10 +1055,10 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		for(Point mP : mConvDrawing){
 			Log.w(TAG, "T: " + mP.type + " X: " + mP.x + "Y: " + mP.y);
 		}*/
-		
+		mChatApplication.newLocalUserDrawing(mDrawing);
 	}
 
-	private void showKeyboard() {
+	/*private void showKeyboard() {
 		InputMethodManager imm = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
 		if (imm != null)
 			imm.showSoftInput(mSearchText, 0);
@@ -1068,7 +1068,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		InputMethodManager imm = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
 		if (imm != null)
 			imm.hideSoftInputFromWindow(mSearchText.getWindowToken(), 0);
-	}
+	}*/
 	
 	/*---------------------------SS---------------------------
 	public void OnMoreButtonClick(View v) {
@@ -1244,6 +1244,10 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 			Message msg = mHandler.obtainMessage(HANDLE_RECEIVE_FLIP_PAGE_EVENT);
 			mHandler.sendMessage(msg);
 		}
+		else if (qualifier.equals(ChatApplication.RECEIVE_DRAWING_EVENT)){
+			Message msg = mHandler.obtainMessage(HANDLE_RECEIVE_DRAWING_EVENT);
+			mHandler.sendMessage(msg);
+		}
 		/*else if (qualifier.equals(ChatApplication.ALLJOYN_ERROR_EVENT)) {
 			Message msg = mHandler.obtainMessage(HANDLE_ALLJOYN_ERROR_EVENT);
 			mHandler.sendMessage(msg);
@@ -1255,7 +1259,8 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	}
 	
 	private static final int HANDLE_RECEIVE_FLIP_PAGE_EVENT = 0;
-	private static final int HANDLE_RECEIVE_DRAW_EVENT = 1;
+	private static final int HANDLE_RECEIVE_DRAWING_EVENT = 1;
+	
     //private static final int HANDLE_ALLJOYN_ERROR_EVENT = 2;
     
     private Handler mHandler = new Handler() {
@@ -1268,7 +1273,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
                 replayRemoteFlipPages();
                 break;
             }
-            case HANDLE_RECEIVE_DRAW_EVENT:
+            case HANDLE_RECEIVE_DRAWING_EVENT:
             {
             	Log.i(TAG, "mHandler.handlerMessage(): HANDLE_RECEIVE_DRAW_EVENT");
             	replayRemoteDrawings();
@@ -1307,14 +1312,15 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
     
     private synchronized void replayRemoteDrawings() {
     	Log.i(TAG, "replayRemoteDrawings()");
-    	//TODO uncomment the next line to replay the remote drawings
-    	//mInboundDrawing = mChatApplication.getInboundDrawing();
-    	for(Point mPoint:mInboundDrawing){
-    		if (mPoint.type == Point.START){
-    			mDocView.simulated_touch_start((float)mPoint.x, (float)mPoint.y);
-    		}
-    		else if (mPoint.type == Point.NORMAL){
-    			mDocView.simulated_touh_move((float)mPoint.x, (float)mPoint.y);
+    	mInboundDrawings = mChatApplication.getInboundDrawings();
+    	for(ArrayList<Point> mDrawing:mInboundDrawings){
+    		for(Point mPoint:mDrawing){
+	    		if (mPoint.type == Point.START){
+	    			mDocView.simulated_touch_start((float)mPoint.x, (float)mPoint.y);
+	    		}
+	    		else if (mPoint.type == Point.NORMAL){
+	    			mDocView.simulated_touh_move((float)mPoint.x, (float)mPoint.y);
+	    		}
     		}
     	}
     	
