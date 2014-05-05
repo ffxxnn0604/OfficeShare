@@ -1,15 +1,17 @@
 package com.artifex.mupdfdemo;
 
+import java.util.ArrayList;
+
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import edu.usc.officeshare.signal.Point;
 
 public class MuPDFReaderView extends ReaderView{
 	
@@ -26,6 +28,10 @@ public class MuPDFReaderView extends ReaderView{
 	protected void onDocMotion() {}
 	protected void onHit(Hit item) {};
 	
+	//local arraylist for storing all the points during one draw
+	//one draw is defined as pressed the ink button to press the check button,
+	//there could be multiple curve lines during one drawing
+	private ArrayList<Point> mDrawing;	
 	
 	public void setLinksEnabled(boolean b) {
 		mLinksEnabled = b;
@@ -52,7 +58,9 @@ public class MuPDFReaderView extends ReaderView{
 		if (tapPageMargin < 100)
 			tapPageMargin = 100;
 		if (tapPageMargin > dm.widthPixels/5)
-			tapPageMargin = dm.widthPixels/5;	
+			tapPageMargin = dm.widthPixels/5;
+		
+		mDrawing = new ArrayList<Point>();
 		
 	}
 
@@ -138,14 +146,13 @@ public class MuPDFReaderView extends ReaderView{
 	 * SEND_FLIP_PAGE_EVENT
 	 */
 	@Override
-	public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
-			float velocityY) {
+	public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
 		Log.i(TAG, "onFling() method called!");
 		
 		switch (mMode) {
 		case Viewing:
 			MuPDFActivity mMuPDFAct = (MuPDFActivity)mContext;
-			mMuPDFAct.newUserFling(velocityX, velocityY);
+			mMuPDFAct.setNewUserFling(velocityX, velocityY);
 			return super.onFling(e1, e2, velocityX, velocityY);			
 			
 			/*return super.onFling(MotionEvent.obtain(SystemClock.uptimeMillis(),SystemClock.uptimeMillis(), 0, 200, 200, 1), 
@@ -219,6 +226,28 @@ public class MuPDFReaderView extends ReaderView{
 		}
 		mX = x;
 		mY = y;
+		
+		//a new drawing starts, we clear the arrayList and add the starting point
+		//mDrawing.clear();
+		mDrawing.add(new Point(Point.START,x,y));
+	}
+	
+	public void simulated_touch_start(float x, float y) {
+		
+		MuPDFView pageView = (MuPDFView)getDisplayedView();
+		if (pageView != null)
+		{
+			pageView.startDraw(x, y);
+		}
+		
+		//we reuse the local variables inside MuPDFReaderView,
+		//since only one handler thread of MuPDFActivity exists, we shouldn't need to
+		//worry about racing condition on modifying mX and mY.
+		mX = x;
+		mY = y;
+		
+		//Also, since this is a simulated aciton, we don't need to record any points into
+		//mDrawing, since it wasn't generated locally by the local user.
 	}
 
 	private void touch_move(float x, float y) {
@@ -235,11 +264,44 @@ public class MuPDFReaderView extends ReaderView{
 			mX = x;
 			mY = y;
 		}
+		
+		//during the drawing, we simply add the point to "this" drawing
+		mDrawing.add(new Point(Point.NORMAL,x,y));
+		
+	}
+	
+	public void simulated_touh_move (float x, float y) {
+		
+		float dx = Math.abs(x - mX);
+		float dy = Math.abs(y - mY);
+		if (dx >= TOUCH_TOLERANCE || dy >= TOUCH_TOLERANCE)
+		{
+			MuPDFView pageView = (MuPDFView)getDisplayedView();
+			if (pageView != null)
+			{
+				pageView.continueDraw(x, y);
+			}
+			mX = x;
+			mY = y;
+		}
+		
 	}
 
 	private void touch_up() {
 
 		// NOOP
+		/*Toast toast = Toast.makeText(mContext, "Touch up!", Toast.LENGTH_SHORT);
+    	toast.show();*/
+    	
+	}
+	
+	public synchronized ArrayList<Point> getDrawing() {
+		//TODO return a deep copy (i.e. clone)
+		return mDrawing;
+	}
+	
+	public synchronized void clearDrawing() {
+		mDrawing.clear();
 	}
 
 	protected void onChildSetup(int i, View v) {

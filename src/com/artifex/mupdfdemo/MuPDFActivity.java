@@ -6,8 +6,6 @@ import java.util.List;
 import java.util.concurrent.Executor;
 
 import org.alljoyn.bus.sample.chat.ChatApplication;
-import org.alljoyn.bus.sample.chat.ChatDialogFragment;
-import org.alljoyn.bus.sample.chat.DialogType;
 import org.alljoyn.bus.sample.chat.Observable;
 import org.alljoyn.bus.sample.chat.Observer;
 import org.alljoyn.bus.sample.chat.R;
@@ -39,8 +37,11 @@ import android.widget.ImageButton;
 import android.widget.RelativeLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.widget.ViewAnimator;
 import edu.usc.officeshare.signal.FlipPage;
+import edu.usc.officeshare.signal.Point;
+import edu.usc.officeshare.util.DrawingConversion;
 
 class ThreadPerTaskExecutor implements Executor {
 	public void execute(Runnable r) {
@@ -97,6 +98,8 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	
 	private ChatApplication mChatApplication = null;
 	private List<FlipPage> mInboundListFlipPage;
+	private ArrayList<Point> mDrawing = null;//this is for temporary store of the passed back points from MuPDFReaderView
+	private ArrayList<Point> mInboundDrawing = null;//this is for replay remote drawings notified by mChatApplication
 
 
 	public void createAlertWaiter() {
@@ -352,6 +355,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		}
 		
 		mInboundListFlipPage = new ArrayList<FlipPage>();
+		//mDrawing = new ArrayList<Point>();
 		
 		//when this activity is created, we register ourself with the Model mChatApplication
 		mChatApplication = (ChatApplication) getApplication();
@@ -933,9 +937,19 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		mTopBarMode = TopBarMode.Accept;
 		mTopBarSwitcher.setDisplayedChild(mTopBarMode.ordinal()-1);
 		mAcceptMode = AcceptMode.Ink;
-		mDocView.setMode(MuPDFReaderView.Mode.Drawing);
+		mDocView.setMode(MuPDFReaderView.Mode.Drawing);		
 		//mAnnotTypeText.setText(R.string.ink);
 		//showInfo(getString(R.string.draw_annotation));
+		
+		Toast toast = Toast.makeText(this, "OnInkButtonClick", Toast.LENGTH_SHORT);
+		toast.show();
+		
+		/**
+		 * When the ink button is pushed, we started a new drawing, so we need to clear
+		 * mDrawing inside the MuPDFReaderView, then MuPDFReader view can start recording
+		 * all the points for the new drawing
+		 */
+		mDocView.clearDrawing();
 	}
 	
 	/*
@@ -965,6 +979,13 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		*/
 		mTopBarMode = TopBarMode.Annot;
 		mTopBarSwitcher.setDisplayedChild(mTopBarMode.ordinal()-1);
+		
+		/**
+		 * when cancel button is pushed, all the drawings we have done should be
+		 * erased, similarly all the points we have recorded along the way should be
+		 * erased.
+		 */
+		mDocView.clearDrawing();
 	}
 
 	public void OnAcceptButtonClick(View v) {
@@ -1022,6 +1043,19 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		
 		mTopBarSwitcher.setDisplayedChild(mTopBarMode.ordinal()-1);
 		mDocView.setMode(MuPDFReaderView.Mode.Viewing);
+		
+		/**
+		 * When we press the accept button, we actually want the drawing, so we get the drawing
+		 * from the mDocView, then store it into mChatApplication, and prepare it to send to all
+		 * others.
+		 */
+		mDrawing = mDocView.getDrawing();
+		/*byte[] bDrawing = DrawingConversion.drawingToBytes(mDrawing);
+		ArrayList<Point> mConvDrawing = DrawingConversion.toDrawing(bDrawing);
+		for(Point mP : mConvDrawing){
+			Log.w(TAG, "T: " + mP.type + " X: " + mP.x + "Y: " + mP.y);
+		}*/
+		
 	}
 
 	private void showKeyboard() {
@@ -1194,7 +1228,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		startActivityForResult(intent, FILEPICK_REQUEST);
 	}
 	
-	public void newUserFling(float x, float y){
+	public synchronized void setNewUserFling(float x, float y){
 		
     	Log.i(TAG, "Local User generated a fling action!");   	
     	
@@ -1203,7 +1237,6 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	
 	@Override
 	public void update(Observable o, Object arg) {
-		// TODO Auto-generated method stub
 		Log.i(TAG, "update(" + arg + ")");
 		String qualifier = (String)arg;
 		
@@ -1222,38 +1255,39 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	}
 	
 	private static final int HANDLE_RECEIVE_FLIP_PAGE_EVENT = 0;
-    //private static final int HANDLE_ALLJOYN_ERROR_EVENT = 1;
+	private static final int HANDLE_RECEIVE_DRAW_EVENT = 1;
+    //private static final int HANDLE_ALLJOYN_ERROR_EVENT = 2;
     
     private Handler mHandler = new Handler() {
         public void handleMessage(Message msg) {
             switch (msg.what) {
-            // TODO add code to TabActivity, and ask it to popBackStack() from its getSupportFragmentManager()
-//            case HANDLE_APPLICATION_QUIT_EVENT:
-//	            {
-//	                Log.i(TAG, "mHandler.handleMessage(): HANDLE_APPLICATION_QUIT_EVENT");
-//	                finish();
-//	                break;
-//	            }	             
             
             case HANDLE_RECEIVE_FLIP_PAGE_EVENT:
-	            {
-	                Log.i(TAG, "mHandler.handleMessage(): HANDLE_CHANNEL_STATE_CHANGED_EVENT");
-	                replayRemoteActions();
-	                break;
-	            }
+            {
+                Log.i(TAG, "mHandler.handleMessage(): HANDLE_RECEIVE_FLIP_PAGE_EVENT");
+                replayRemoteFlipPages();
+                break;
+            }
+            case HANDLE_RECEIVE_DRAW_EVENT:
+            {
+            	Log.i(TAG, "mHandler.handlerMessage(): HANDLE_RECEIVE_DRAW_EVENT");
+            	replayRemoteDrawings();
+            	break;
+            }
+	        //TODO add code to display a dialog during MuPDF activity
             /*case HANDLE_ALLJOYN_ERROR_EVENT:
-	            {
-	                Log.i(TAG, "mHandler.handleMessage(): HANDLE_ALLJOYN_ERROR_EVENT");
-	                //alljoynError();
-	                break;
-	            }    */	
+            {
+                Log.i(TAG, "mHandler.handleMessage(): HANDLE_ALLJOYN_ERROR_EVENT");
+                //alljoynError();
+                break;
+            }*/	
             default:
                 break;
             }
         }
     };
     
-    private void replayRemoteActions() {
+    private synchronized void replayRemoteFlipPages() {
     	Log.i(TAG, "replayRemoteActions()");
     	mInboundListFlipPage.clear();
     	MotionEvent dummyE1 = MotionEvent.obtain(SystemClock.uptimeMillis(),SystemClock.uptimeMillis(), 0, 200, 200, 1);
@@ -1261,13 +1295,28 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
     	//NOTE: getHistoryFlipPage will clear the mInboundFlipPage after a clone is created,
     	//so that it will be emptied for future actions.
     	//Therefore, each time we only get newly delivered actions, not all actions from the beginning
-    	mInboundListFlipPage = mChatApplication.getHistoryFlipPage();
+    	mInboundListFlipPage = mChatApplication.getInboundFlipPage();
     	for (FlipPage fp : mInboundListFlipPage){
     		//NOTE: there might be a loss conversion from double to float
     		mDocView.onSimulateFling(dummyE1, dummyE2, (float)fp.velocityX, (float)fp.velocityY);
     	}
     	dummyE1.recycle();
     	dummyE2.recycle();   	
+    	
+    }
+    
+    private synchronized void replayRemoteDrawings() {
+    	Log.i(TAG, "replayRemoteDrawings()");
+    	//TODO uncomment the next line to replay the remote drawings
+    	//mInboundDrawing = mChatApplication.getInboundDrawing();
+    	for(Point mPoint:mInboundDrawing){
+    		if (mPoint.type == Point.START){
+    			mDocView.simulated_touch_start((float)mPoint.x, (float)mPoint.y);
+    		}
+    		else if (mPoint.type == Point.NORMAL){
+    			mDocView.simulated_touh_move((float)mPoint.x, (float)mPoint.y);
+    		}
+    	}
     	
     }
 	

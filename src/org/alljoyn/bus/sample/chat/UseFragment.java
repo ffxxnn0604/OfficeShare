@@ -565,7 +565,7 @@ public class UseFragment extends Fragment implements Observer{
 	            }
             case HANDLE_FILE_COMPELTE_EVENT:
             	{
-            		Toast toast = Toast.makeText(getActivity(), "File Complete!", Toast.LENGTH_SHORT);
+        		Toast toast = Toast.makeText(getActivity(), "File Complete!", Toast.LENGTH_SHORT);
             	toast.show();
             	
             	File dirSDRoot = Environment.getExternalStorageDirectory();

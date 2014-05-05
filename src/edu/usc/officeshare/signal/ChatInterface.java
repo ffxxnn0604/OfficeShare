@@ -17,14 +17,12 @@
  *    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  *    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-package org.alljoyn.bus.sample.chat;
+package edu.usc.officeshare.signal;
 
 import org.alljoyn.bus.BusException;
 import org.alljoyn.bus.annotation.BusInterface;
 import org.alljoyn.bus.annotation.BusSignal;
 
-import edu.usc.officeshare.signal.FileInfo;
-import edu.usc.officeshare.signal.FlipPage;
 
 @BusInterface (name = "org.alljoyn.bus.samples.chat")
 public interface ChatInterface {

@@ -45,7 +45,7 @@ public class ServerFileTransfer implements Runnable {
 			//1. check if SD card is mounted or not
 			if (!Environment.getExternalStorageState().equalsIgnoreCase(Environment.MEDIA_MOUNTED)){
 				buffer = new byte[4];
-				buffer = Utility.intToByte(-1); //send size as -1 if SD card is not mounted
+				buffer = Utility.toByteArray(-1); //send size as -1 if SD card is not mounted
 				clientSocket.send(buffer);
 				Log.d(TAG, "The SD card is not mounted, send -1 as initial handshake signal");
 				clientSocket.close();
@@ -59,7 +59,7 @@ public class ServerFileTransfer implements Runnable {
 			if (requestFile == null)
 			{
 				buffer = new byte[4];
-				buffer = Utility.intToByte(-2);
+				buffer = Utility.toByteArray(-2);
 				clientSocket.send(buffer);
 				Log.d(TAG, "File is null, send -2 as initial handshake signal");
 				clientSocket.close();
@@ -68,7 +68,7 @@ public class ServerFileTransfer implements Runnable {
 			
 			//3.Everything is fine, send 0 as the initial handshake signal
 			buffer = new byte[4];
-			buffer = Utility.intToByte(0);
+			buffer = Utility.toByteArray(0);
 			clientSocket.send(buffer);
 			Log.d(TAG, "Check passed, send 0 as initial handshake signal");
 			

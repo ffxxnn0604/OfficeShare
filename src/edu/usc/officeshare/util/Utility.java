@@ -16,32 +16,42 @@ public class Utility {
 	/**
 	 * @param args
 	 */
-	public static int byteToInt (byte[] in){
+	public static int toInt (byte[] in){
 		assert(in.length == 4);
 		ByteBuffer wrapped = ByteBuffer.wrap(in); // big-endian by default
 		int out = wrapped.getInt(); // 66051
 		return out;
 	}
 	
-	public static byte[] intToByte (int in){
+	public static byte[] toByteArray (int in){
 		ByteBuffer buf = ByteBuffer.allocate(4);
 		buf.putInt(in);
 		byte[] bytes = buf.array(); // { 0, 1 ,2, 3}
 		return bytes;
 	}
 	
-	public static byte[] longToByte (long in){
+	public static byte[] toByteArray (long in){
 		ByteBuffer buf = ByteBuffer.allocate(8);
 		buf.putLong(in);
 		byte[] bytes = buf.array();
 		return bytes;
 	}
 	
-	public static long byteToLong (byte[] in){
+	public static long toLong (byte[] in){
 		assert(in.length == 8);
 		ByteBuffer wrapped = ByteBuffer.wrap(in);
 		long out = wrapped.getLong();
 		return out;
+	}
+	
+	public static byte[] toByteArray(double value) {
+	    byte[] bytes = new byte[8];
+	    ByteBuffer.wrap(bytes).putDouble(value);
+	    return bytes;
+	}
+
+	public static double toDouble(byte[] bytes) {
+	    return ByteBuffer.wrap(bytes).getDouble();
 	}
 	
     /**

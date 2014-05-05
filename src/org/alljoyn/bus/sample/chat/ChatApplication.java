@@ -30,6 +30,7 @@ import android.net.Uri;
 import android.util.Log;
 import edu.usc.officeshare.signal.FileInfo;
 import edu.usc.officeshare.signal.FlipPage;
+import edu.usc.officeshare.signal.Point;
 
 /**
  * The ChatAppliation class serves as the Model (in the sense of the common
@@ -763,7 +764,7 @@ public class ChatApplication extends Application implements Observable {
 	 * access or change the list, and we are deeply paranoid, we provide a
 	 * deep copy.
 	 */
-    public synchronized List<FlipPage> getHistoryFlipPage() {
+    public synchronized List<FlipPage> getInboundFlipPage() {
         List<FlipPage> clone = new ArrayList<FlipPage>(mInboundFlipPage.size());
         for (FlipPage fp : mInboundFlipPage) {
             clone.add(new FlipPage(fp));
@@ -771,6 +772,9 @@ public class ChatApplication extends Application implements Observable {
         mInboundFlipPage.clear();
         return clone;
     }
+    
+    private ArrayList<ArrayList<Point>> mDrawings = new ArrayList<ArrayList<Point>>();
+    
     
     /*-----------------------------------------------------------------------*/
     /* Observer related methods												 */

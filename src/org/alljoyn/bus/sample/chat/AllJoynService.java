@@ -40,7 +40,9 @@ import android.os.Looper;
 import android.os.Message;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
+import edu.usc.officeshare.signal.ChatInterface;
 import edu.usc.officeshare.signal.FileInfo;
+import edu.usc.officeshare.signal.FileInfoInterface;
 import edu.usc.officeshare.signal.FlipPage;
 import edu.usc.officeshare.util.Utility;
 public class AllJoynService extends Service implements Observer {

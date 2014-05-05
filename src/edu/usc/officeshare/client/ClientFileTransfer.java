@@ -68,7 +68,7 @@ public class ClientFileTransfer implements Runnable {
 			// 1. get the initial sending signal of this transfer
 			buffer = new byte[4];
 			clientSocket.receive(buffer);
-			int mHandShake = Utility.byteToInt(buffer);
+			int mHandShake = Utility.toInt(buffer);
 			Log.d(TAG,"The initial handshake signal is " + mHandShake);
 			
 			if (mHandShake == -1) {
