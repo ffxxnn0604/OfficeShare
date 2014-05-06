@@ -229,15 +229,17 @@ public class MuPDFReaderView extends ReaderView{
 		
 		//a new drawing starts, we clear the arrayList and add the starting point
 		//mDrawing.clear();
-		mDrawing.add(new Point(Point.START,x,y));
+		float density = getResources().getDisplayMetrics().density;
+		mDrawing.add(new Point(Point.START,x/density,y/density));
 	}
 	
 	public void simulated_touch_start(float x, float y) {
 		
 		MuPDFView pageView = (MuPDFView)getDisplayedView();
+		float density = getResources().getDisplayMetrics().density;
 		if (pageView != null)
 		{
-			pageView.startDraw(x, y);
+			pageView.startDraw(x*density, y*density);
 		}
 		
 		//we reuse the local variables inside MuPDFReaderView,
@@ -266,7 +268,8 @@ public class MuPDFReaderView extends ReaderView{
 		}
 		
 		//during the drawing, we simply add the point to "this" drawing
-		mDrawing.add(new Point(Point.NORMAL,x,y));
+		float density = getResources().getDisplayMetrics().density;
+		mDrawing.add(new Point(Point.NORMAL,x/density,y/density));
 		
 	}
 	
@@ -274,12 +277,13 @@ public class MuPDFReaderView extends ReaderView{
 		
 		float dx = Math.abs(x - mX);
 		float dy = Math.abs(y - mY);
+		float density = getResources().getDisplayMetrics().density;
 		if (dx >= TOUCH_TOLERANCE || dy >= TOUCH_TOLERANCE)
 		{
 			MuPDFView pageView = (MuPDFView)getDisplayedView();
 			if (pageView != null)
 			{
-				pageView.continueDraw(x, y);
+				pageView.continueDraw(x*density, y*density);
 			}
 			mX = x;
 			mY = y;
